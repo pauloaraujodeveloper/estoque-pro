@@ -1,0 +1,303 @@
+/* EstoquePro — responsivo: desktop, notebook, tablet e celular */
+:root {
+    --bg: #f4f6fb;
+    --card: #fff;
+    --ink: #1e2a3a;
+    --mut: #6b7a90;
+    --pri: #2563eb;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --bad: #dc2626;
+    --line: #e5e9f2;
+    --r: 14px;
+    --top-h: 60px;
+}
+
+* { box-sizing: border-box; }
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-tap-highlight-color: transparent;
+}
+
+img { max-width: 100%; }
+.hidden { display: none !important; }
+.muted { color: var(--mut); font-size: 13px; }
+.err { color: var(--bad); }
+.nowrap { white-space: nowrap; }
+.break { overflow-wrap: anywhere; }
+
+/* ---------- LOGIN ---------- */
+.auth-wrap {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.auth-card {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 28px;
+    width: 440px;
+    max-width: 100%;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .12);
+}
+
+.brand { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+.logo { font-size: 34px; }
+.brand small { display: block; color: var(--mut); }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tab {
+    flex: 1; padding: 12px; border: 1px solid var(--line);
+    background: #f8fafc; border-radius: 10px; cursor: pointer; font-size: 14px;
+}
+.tab.active { background: var(--ink); color: #fff; }
+
+label { display: block; margin: 10px 0; font-size: 14px; }
+
+input, select, textarea {
+    width: 100%; padding: 11px 12px; border: 1px solid var(--line);
+    border-radius: 10px; font-size: 15px; background: #fff; color: var(--ink);
+    max-width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--pri); outline-offset: 0; border-color: var(--pri);
+}
+
+.btn {
+    padding: 11px 16px; border-radius: 10px; border: 0;
+    cursor: pointer; font-weight: 600; font-size: 15px; color: var(--ink);
+}
+.btn.primary { background: var(--pri); color: #fff; width: 100%; }
+.btn.ghost { background: #eef2ff; }
+.btn.ok { background: var(--ok); color: #fff; }
+.btn.warn { background: var(--warn); color: #fff; }
+.btn.danger { background: var(--bad); color: #fff; }
+.btn.sm { padding: 8px 12px; font-size: 13px; }
+.btn:active { transform: scale(.98); }
+
+/* ---------- LAYOUT ---------- */
+#app { display: flex; min-height: 100vh; min-height: 100dvh; }
+
+#sidebar {
+    width: 256px; flex: none;
+    background: #0f172a; color: #e2e8f0;
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh; height: 100dvh;
+}
+
+.brand.small { padding: 14px 16px; border-bottom: 1px solid #1e293b; margin: 0; }
+.brand.small strong { display: block; font-size: 15px; }
+.co-logo {
+    width: 42px; height: 42px; object-fit: contain; border-radius: 10px;
+    background: #fff; padding: 3px; flex: none;
+}
+
+#menu { flex: 1; overflow-y: auto; padding: 10px; -webkit-overflow-scrolling: touch; }
+#menu a {
+    display: block; color: #cbd5e1; text-decoration: none;
+    padding: 11px 12px; border-radius: 10px; margin: 2px 0; font-size: 14px;
+}
+#menu a.active, #menu a:hover { background: #1e293b; color: #fff; }
+#menu .grp {
+    font-size: 11px; color: #94a3b8; margin: 14px 8px 4px;
+    text-transform: uppercase; letter-spacing: .05em;
+}
+
+.side-foot {
+    padding: 12px; border-top: 1px solid #1e293b;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.side-foot small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 15;
+}
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+#topbar {
+    display: flex; gap: 12px; align-items: center;
+    background: var(--card); border-bottom: 1px solid var(--line);
+    padding: 10px 18px; min-height: var(--top-h);
+    position: sticky; top: 0; z-index: 10;
+}
+#btn-menu {
+    display: none; font-size: 22px; background: #f1f5f9; border: 0;
+    border-radius: 10px; padding: 8px 12px; cursor: pointer; flex: none;
+}
+#topbar h1 { margin: 0; font-size: 20px; }
+.top-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; flex: none; }
+.icon-btn {
+    font-size: 20px; background: #f1f5f9; border: 0; border-radius: 10px;
+    padding: 8px 10px; cursor: pointer; position: relative;
+}
+.badge {
+    position: absolute; top: -6px; right: -6px; background: var(--bad);
+    color: #fff; border-radius: 99px; font-size: 11px; padding: 1px 6px;
+}
+.pill { background: #e0e7ff; border-radius: 99px; padding: 6px 12px; font-size: 12px; font-weight: 700; }
+
+#content { padding: 20px; max-width: 1200px; width: 100%; margin: 0 auto; }
+
+/* ---------- COMPONENTES ---------- */
+.grid { display: grid; gap: 14px; }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+
+.card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 16px; min-width: 0;
+}
+.card h3 { margin: 0 0 4px; font-size: 14px; color: var(--mut); }
+.card .big { font-size: 26px; font-weight: 800; }
+.card-pad0 { padding: 0; overflow: hidden; }
+.co-card { display: flex; gap: 10px; align-items: center; }
+
+.logo-row { display: flex; gap: 14px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.logo-prev {
+    width: 96px; height: 96px; object-fit: contain; border: 1px solid var(--line);
+    border-radius: 12px; background: #f8fafc; padding: 6px;
+}
+.logo-prev.sm { width: 52px; height: 52px; }
+.logo-prev.xs { width: 32px; height: 32px; border-radius: 8px; padding: 2px; }
+
+/* Tabelas com rolagem horizontal no mobile */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border-radius: var(--r);
+}
+.table-wrap table { min-width: 620px; }
+th, td {
+    padding: 10px 12px; border-bottom: 1px solid var(--line);
+    text-align: left; font-size: 14px; vertical-align: middle;
+}
+th { background: #f8fafc; color: var(--mut); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; align-items: center; }
+.toolbar input, .toolbar select { width: auto; min-width: 160px; flex: 1 1 160px; }
+.toolbar .btn { flex: none; }
+
+.tag { border-radius: 99px; padding: 3px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.t-ok { background: #dcfce7; color: #166534; }
+.t-warn { background: #fef3c7; color: #92400e; }
+.t-bad { background: #fee2e2; color: #991b1b; }
+.t-info { background: #dbeafe; color: #1e40af; }
+
+.bar { height: 10px; background: #eef2ff; border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--pri); }
+
+#toasts {
+    position: fixed; bottom: 16px; right: 16px; left: auto;
+    display: flex; flex-direction: column; gap: 8px; z-index: 99; max-width: min(92vw, 380px);
+}
+.toast {
+    background: #0f172a; color: #fff; padding: 12px 16px;
+    border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); font-size: 14px;
+}
+
+#modal-root:empty { display: none; }
+#modal-root {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; z-index: 50;
+}
+.modal {
+    background: #fff; border-radius: 16px; padding: 20px;
+    width: 560px; max-width: 100%; max-height: 90vh; max-height: 90dvh; overflow-y: auto;
+}
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; min-width: 0; }
+
+/* ---------- RESPONSIVO ---------- */
+
+/* Notebook / telas médias */
+@media (max-width: 1100px) {
+    .g4 { grid-template-columns: repeat(2, 1fr); }
+    .g3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Tablet retrato e celular grande: menu vira gaveta */
+@media (max-width: 900px) {
+    #btn-menu { display: block; }
+    #sidebar {
+        position: fixed; left: 0; top: 0; z-index: 20;
+        transform: translateX(-105%); transition: transform .22s ease;
+        width: min(300px, 84vw);
+    }
+    #sidebar.open { transform: none; box-shadow: 0 0 60px rgba(0, 0, 0, .4); }
+    .g2 { grid-template-columns: 1fr; }
+    #content { padding: 16px; }
+    #topbar h1 { font-size: 18px; }
+}
+
+/* Celular */
+@media (max-width: 640px) {
+    #content { padding: 12px; }
+    #topbar { padding: 8px 12px; gap: 8px; }
+    #topbar h1 { font-size: 16px; }
+    #crumbs { display: none; }
+    .pill { display: none; }
+    .g4, .g3 { grid-template-columns: 1fr 1fr; }
+    .card { padding: 12px; border-radius: 12px; }
+    .card .big { font-size: 20px; }
+    th, td { padding: 8px 10px; font-size: 13px; }
+    .table-wrap table { min-width: 560px; }
+    .toolbar input, .toolbar select { flex: 1 1 100%; min-width: 0; }
+    .toolbar .btn { flex: 1 1 auto; }
+    .row { flex-direction: column; }
+    .modal {
+        width: 100%; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+        align-self: flex-end; max-height: 94vh; max-height: 94dvh;
+    }
+    #modal-root { padding: 0; align-items: flex-end; }
+    #toasts { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: none; }
+    .auth-card { padding: 22px 18px; }
+    input, select, textarea { font-size: 16px; } /* evita zoom automático no iOS */
+}
+
+/* Celular pequeno */
+@media (max-width: 400px) {
+    .g4, .g3 { grid-template-columns: 1fr; }
+    .card .big { font-size: 19px; }
+    .side-foot { flex-wrap: wrap; }
+}
+
+/* Celular em paisagem (altura curta) */
+@media (max-height: 500px) and (orientation: landscape) {
+    .auth-wrap { padding: 12px; align-items: flex-start; }
+    .modal { max-height: 96vh; }
+}
+
+/* Alvos de toque confortáveis em telas touch */
+@media (pointer: coarse) {
+    #menu a { padding: 13px 12px; }
+    .btn.sm { padding: 10px 14px; }
+    .icon-btn, #btn-menu { min-width: 44px; min-height: 44px; }
+    .tab { padding: 14px; }
+}
+
+/* Reduz animação p/ quem prefere */
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+}
+
+/* Impressão: só conteúdo */
+@media print {
+    #sidebar, #topbar, .toolbar, #toasts { display: none !important; }
+    #content { max-width: none; }
+    body { background: #fff; }
+}

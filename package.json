@@ -1,0 +1,21 @@
+{
+  "name": "controle-de-estoque-multissegmento",
+  "version": "1.0.0",
+  "description": "Sistema de Controle de Estoque Multissegmento - MVP Fases 1-8",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node src/seed.js",
+    "test": "node tests/run.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

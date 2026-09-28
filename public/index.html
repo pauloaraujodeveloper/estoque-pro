@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="EstoquePro — controle de estoque multissegmento para desktop, notebook, tablet e celular">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>EstoquePro — Gestão Multissegmento</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div id="auth-view" class="auth-wrap hidden">
+    <div class="auth-card">
+      <div class="brand"><span class="logo">📦</span>
+        <div><strong>EstoquePro</strong><small>Controle simples, gestão inteligente</small></div>
+      </div>
+      <div class="tabs"><button id="tab-login" class="tab active"
+          title="Entrar com e-mail e senha da sua empresa">Entrar</button><button id="tab-signup" class="tab"
+          title="Criar uma nova empresa independente no sistema">Cadastrar empresa</button></div>
+      <form id="form-login">
+        <label>E-mail<input id="login-email" type="email" required placeholder="voce@suaempresa.com"
+            title="E-mail do seu usuário dentro da sua empresa"></label>
+        <label>Senha<input id="login-pass" type="password" required placeholder="••••••"
+            title="Sua senha de acesso"></label>
+        <button class="btn primary" type="submit" title="Acessar o painel da sua empresa">Entrar</button>
+        <p class="muted">Demo: admin@marmita.com / 123456 · admin@salao.com / 123456 · SaaS: saas@dono.com / saas123</p>
+        <p id="login-err" class="err"></p>
+      </form>
+      <form id="form-signup" class="hidden">
+        <label>Nome da empresa<input id="su-company" required placeholder="Ex: Mercado do Zé"
+            title="Nome fantasia da sua empresa. Tudo ficará isolado das outras empresas."></label>
+        <label>Segmento<select id="su-seg" title="Ativa módulos específicos do seu ramo">
+            <option value="mercado">Mercado / Loja</option>
+            <option value="marmitaria">Marmitaria / Restaurante</option>
+            <option value="salao">Salão de beleza</option>
+            <option value="peixaria">Peixaria</option>
+          </select></label>
+        <label>Seu nome<input id="su-name" required placeholder="Seu nome"
+            title="Responsável / administrador da empresa"></label>
+        <label>Seu e-mail<input id="su-email" type="email" required placeholder="voce@suaempresa.com"
+            title="Será seu login. Cada empresa tem usuários separados."></label>
+        <label>Senha<input id="su-pass" type="password" required minlength="4" placeholder="Mín. 4 caracteres"></label>
+        <button class="btn primary" type="submit" title="Criar empresa com banco de dados isolado">Criar minha
+          empresa</button>
+        <p id="signup-err" class="err"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <aside id="sidebar">
+      <div class="brand small"><img id="co-logo" class="co-logo hidden" alt="Logo da empresa"><span class="logo" id="co-logo-fb">📦</span>
+        <div><strong id="co-name">—</strong><small id="co-seg">—</small></div>
+      </div>
+      <nav id="menu"></nav>
+      <div class="side-foot"><small id="user-line"></small><button id="btn-logout" class="btn ghost"
+          title="Encerrar sessão">Sair</button></div>
+    </aside>
+    <div class="main">
+      <header id="topbar">
+        <button id="btn-menu" title="Abrir/fechar menu">☰</button>
+        <div>
+          <h1 id="page-title">Dashboard</h1>
+          <p id="crumbs" class="muted"></p>
+        </div>
+        <div class="top-actions">
+          <button id="bell" class="icon-btn" title="Ver alertas: estoque baixo, vencimentos, margem">🔔<span id="bell-n"
+              class="badge hidden">0</span></button>
+          <span id="role-badge" class="pill"></span>
+        </div>
+      </header>
+      <main id="content"></main>
+    </div>
+  </div>
+
+  <div id="overlay" class="hidden"></div>
+  <div id="toasts"></div>
+  <div id="modal-root"></div>
+  <script src="app.js"></script>
+</body>
+
+</html>

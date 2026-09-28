@@ -1,0 +1,22 @@
+# Dependências
+node_modules/
+
+# Banco de dados locais (regeneráveis com: node src/seed.js)
+database.sqlite
+database.sqlite-wal
+database.sqlite-shm
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+
+# Logs
+*.log
+server.log
+server.err.log
+
+# Segredos locais (use .env.example como base)
+.env
+
+# Sistema
+.DS_Store
+Thumbs.db
