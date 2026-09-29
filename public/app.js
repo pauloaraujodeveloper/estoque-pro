@@ -32,7 +32,7 @@ function csv(name, rows) {
   const out = [cols.join(';')].concat(rows.map(r => cols.map(c => JSON.stringify(r[c] ?? '')).join(';'))).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + out], { type: 'text/csv' })); a.download = name; a.click();
 }
-const PAYL = { dinheiro: 'Dinheiro', pix: 'Pix', cartao_credito: 'Crédito', cartao_debito: 'Débito', fiado: 'Fiado', cartao: 'Cartão', multi: 'Múltiplo' };
+const PAYL = { dinheiro: 'Dinheiro', pix: 'Pix', cartao_credito: 'Crédito', cartao_debito: 'Débito', fiado: 'Fiado', cartao: 'Cartão', multi: 'Múltiplo', cortesia: 'Cortesia' };
 function payLabel(m) { return PAYL[m] || m || '-'; }
 function statusLabel(s) { return { finalizada: 'Concluída', aguardando_pagamento: 'Aguardando pagto', cancelada: 'Cancelada', aberto: 'Aberto', recebido: 'Recebido', pago: 'Pago', parcial: 'Parcial' }[s] || s || '-'; }
 // Exporta .xls que abre no Excel (tabela HTML)
@@ -478,7 +478,7 @@ async function viewPDV(C) {
   drawList(); drawCart();
   $('#cart-fin').onclick = async () => {
     try {
-      const j = await api.post('/api/sales', { customer_id: $('#cart-cli').value || null, items: cart, desconto: Number($('#cart-desc').value), payments: pays, caixa_id: caixaSel || null, operator_name: $('#pdv-op').value, awaiting: $('#cart-wait').checked });
+      const j = await api.post('/api/sales', { customer_id: $('#cart-cli').value || null, items: cart, desconto: Number($('#cart-desc').value), payments: (tot() === 0 ? [] : pays), caixa_id: caixaSel || null, operator_name: $('#pdv-op').value, awaiting: $('#cart-wait').checked });
       const det = await api.get('/api/sales/' + j.id);
       const co = await api.get('/api/company').catch(() => ({}));
       const hasPix = pays.some(p => p.method === 'pix');

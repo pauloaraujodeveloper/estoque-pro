@@ -8,6 +8,8 @@ function markupPct(preco, custo) {
   return Number((((preco - custo) / custo) * 100).toFixed(2));
 }
 function lucroUnit(preco, custo) { return Number(((preco || 0) - (custo || 0)).toFixed(2)); }
+// remove < > para impedir XSS armazenado (nomes legítimos não usam esses caracteres)
+function cleanStr(s, max = 120) { return String(s ?? '').replace(/[<>]/g, '').slice(0, max); }
 function precoPorMargem(custo, margemDesejada) {
   const m = Number(margemDesejada) / 100;
   if (m >= 1) return 0;
@@ -33,4 +35,4 @@ function diasPara(dataISO) {
   const d = new Date(dataISO); if (isNaN(d)) return null; d.setHours(0, 0, 0, 0);
   return Math.round((d - hoje) / 86400000);
 }
-module.exports = { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara };
+module.exports = { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara, cleanStr };

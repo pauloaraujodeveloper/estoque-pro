@@ -8,13 +8,14 @@ const cors = require('cors');
 const path = require('path');
 const { initMaster, mq, mget, mrun, getTenantDb, tq, tget, trun, deleteTenant, TODAY, USE_PG, pool } = require('./src/db');
 const { hashPass, checkPass, sign, authRequired, requireRole, requireSuperadmin, filterProductByRole } = require('./src/auth');
-const { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara } = require('./src/utils');
+const { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara, cleanStr } = require('./src/utils');
 const { sendMail, welcomeHtml, tempPassHtml, mailConfigured } = require('./src/mailer');
 const crypto = require('crypto');
 const { buildBRCode } = require('./src/pix');
 const QRCode = require('qrcode');
+const { limit } = require('./src/ratelimit');
 
-const PAY_METHODS = { dinheiro: 'Dinheiro', pix: 'Pix', cartao_credito: 'Cartão de crédito', cartao_debito: 'Cartão de débito', fiado: 'Fiado', cartao: 'Cartão' };
+const PAY_METHODS = { dinheiro: 'Dinheiro', pix: 'Pix', cartao_credito: 'Cartão de crédito', cartao_debito: 'Cartão de débito', fiado: 'Fiado', cartao: 'Cartão', cortesia: 'Cortesia' };
 function payLabel(m) { return PAY_METHODS[m] || m; }
 // cadastros padrão de um tenant novo (unidades + categorias de exemplo)
 async function seedDefaults(tdb) {
@@ -115,8 +116,9 @@ function validLogo(l) {
 
 // ============ AUTH + ONBOARDING SaaS ============
 app.post('/api/auth/signup-company', ah(async (req, res) => {
-  const { company_nome, segmento, user_name, email, password } = req.body || {};
+  let { company_nome, segmento, user_name, email, password } = req.body || {};
   if (!company_nome || !user_name || !email || !password) return res.status(400).json({ error: 'Empresa, responsável, e-mail e senha são obrigatórios.' });
+  company_nome = cleanStr(company_nome); user_name = cleanStr(user_name);
   const exists = await mget('SELECT id FROM users WHERE lower(email)=lower(?)', email);
   if (exists) return res.status(400).json({ error: 'E-mail já cadastrado.' });
   const c = await mrun('INSERT INTO companies(nome,segmento) VALUES(?,?)', company_nome, segmento || 'mercado');
@@ -130,7 +132,7 @@ app.post('/api/auth/signup-company', ah(async (req, res) => {
   res.status(201).json({ token: sign(user), user, company_id });
 }));
 
-app.post('/api/auth/login', ah(async (req, res) => {
+app.post('/api/auth/login', limit(30, 15 * 60 * 1000), ah(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Informe e-mail e senha.' });
   const u = await mget('SELECT u.*, c.nome as company_nome, c.segmento as company_segmento FROM users u LEFT JOIN companies c ON c.id=u.company_id WHERE lower(u.email)=lower(?)', String(email));
@@ -146,7 +148,7 @@ app.post('/api/auth/login', ah(async (req, res) => {
   res.json({ token: sign({ ...user }), user });
 }));
 app.get('/api/me', authRequired, (req, res) => res.json({ user: req.user }));
-app.post('/api/auth/recover', ah(async (req, res) => {
+app.post('/api/auth/recover', limit(10, 60 * 60 * 1000), ah(async (req, res) => {
   const { email } = req.body || {};
   // resposta genérica (não revela se o e-mail existe)
   const done = { message: 'Se o e-mail estiver cadastrado, você receberá uma senha temporária.' };
@@ -236,8 +238,9 @@ app.get('/api/users', authRequired, requireRole('admin'), ah(async (req, res) =>
   res.json(await mq('SELECT id,name,email,role,active,created_at FROM users WHERE company_id=? ORDER BY id', req.user.company_id));
 }));
 app.post('/api/users', authRequired, requireRole('admin'), ah(async (req, res) => {
-  const { name, email, password, role } = req.body || {};
+  let { name, email, password, role } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: 'Nome, e-mail e senha obrigatórios.' });
+  name = cleanStr(name);
   const cid = req.user.role === 'superadmin' ? req.body.company_id : req.user.company_id;
   if (!cid) return res.status(400).json({ error: 'Empresa obrigatória.' });
   try {
@@ -260,7 +263,7 @@ app.put('/api/users/:id', authRequired, requireRole('admin'), ah(async (req, res
 app.get('/api/categories', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT * FROM categories ORDER BY nome'))));
 app.post('/api/categories', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   if (!req.body?.nome) return res.status(400).json({ error: 'Nome obrigatório.' });
-  try { const r = await trun(T(req), 'INSERT INTO categories(nome) VALUES(?)', req.body.nome); res.status(201).json({ id: Number(r.lastInsertRowid) }); }
+  try { const r = await trun(T(req), 'INSERT INTO categories(nome) VALUES(?)', cleanStr(req.body.nome, 60)); res.status(201).json({ id: Number(r.lastInsertRowid) }); }
   catch { res.status(400).json({ error: 'Categoria já existe.' }); }
 }));
 app.get('/api/units', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT * FROM units ORDER BY sigla'))));
@@ -296,6 +299,8 @@ app.get('/api/products/:id', authRequired, ah(async (req, res) => {
 app.post('/api/products', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   const b = req.body || {};
   if (!b.nome) return res.status(400).json({ error: 'Nome é obrigatório.' });
+  b.nome = cleanStr(b.nome);
+  if (Number(b.preco_venda || 0) < 0 || Number(b.custo_medio || 0) < 0) return res.status(400).json({ error: 'Preço/custo inválidos.' });
   const r = await trun(T(req), `INSERT INTO products(nome,codigo_interno,codigo_barras,sku,categoria_id,marca,unidade_id,tipo,custo_medio,preco_venda,estoque_atual,estoque_min,estoque_max,ponto_reposicao,localizacao,status,margem_min,perecivel,ncm,cest,tax_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     b.nome, b.codigo_interno || null, b.codigo_barras || null, b.sku || null, b.categoria_id || null, b.marca || null, b.unidade_id || null,
     b.tipo || 'revenda', b.custo_medio || 0, b.preco_venda || 0, b.estoque_atual || 0, b.estoque_min || 0, b.estoque_max || 0,
@@ -311,6 +316,8 @@ app.put('/api/products/:id', authRequired, requireRole('admin', 'gerente'), ah(a
   const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', req.params.id);
   if (!p) return res.status(404).json({ error: 'Produto não encontrado.' });
   const b = req.body || {};
+  if ((b.preco_venda !== undefined && Number(b.preco_venda) < 0) || (b.custo_medio !== undefined && Number(b.custo_medio) < 0)) return res.status(400).json({ error: 'Preço/custo inválidos.' });
+  if (b.nome !== undefined) b.nome = cleanStr(b.nome);
   await trun(tdb, `UPDATE products SET nome=?,codigo_interno=?,codigo_barras=?,sku=?,categoria_id=?,marca=?,unidade_id=?,tipo=?,custo_medio=?,preco_venda=?,estoque_min=?,estoque_max=?,ponto_reposicao=?,localizacao=?,status=?,margem_min=?,perecivel=?,ncm=?,cest=?,tax_rate=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
     b.nome ?? p.nome, b.codigo_interno ?? p.codigo_interno, b.codigo_barras ?? p.codigo_barras, b.sku ?? p.sku, b.categoria_id ?? p.categoria_id,
     b.marca ?? p.marca, b.unidade_id ?? p.unidade_id, b.tipo ?? p.tipo, b.custo_medio ?? p.custo_medio, b.preco_venda ?? p.preco_venda,
@@ -356,6 +363,9 @@ app.post('/api/inventory/movement', authRequired, requireRole('admin', 'gerente'
   const tdb = T(req);
   const { product_id, tipo, qtd, motivo, custo_unit } = req.body || {};
   if (!product_id || !tipo || qtd === undefined) return res.status(400).json({ error: 'Produto, tipo e quantidade obrigatórios.' });
+  if (!['entrada', 'compra', 'devolucao_entrada', 'bonificacao', 'saida', 'venda', 'perda', 'consumo', 'ajuste'].includes(tipo)) return res.status(400).json({ error: 'Tipo de movimentação inválido.' });
+  if (!Number.isFinite(Number(qtd))) return res.status(400).json({ error: 'Quantidade inválida.' });
+  if (tipo !== 'ajuste' && !(Number(qtd) > 0)) return res.status(400).json({ error: 'Quantidade deve ser maior que zero.' });
   if (tipo === 'perda' && !motivo) return res.status(400).json({ error: 'Perdas exigem motivo.' });
   try {
     if (['saida', 'perda'].includes(tipo)) await baixaPVPS(tdb, product_id, qtd);
@@ -375,6 +385,7 @@ app.get('/api/movements', authRequired, ah(async (req, res) => {
 app.post('/api/inventory/count', authRequired, requireRole('admin', 'gerente', 'estoquista'), ah(async (req, res) => {
   const tdb = T(req);
   const { product_id, fisico } = req.body || {};
+  if (!(Number(fisico) >= 0)) return res.status(400).json({ error: 'Contagem física inválida.' });
   const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', product_id);
   if (!p) return res.status(404).json({ error: 'Produto não encontrado.' });
   const diverg = Number(fisico) - Number(p.estoque_atual);
@@ -387,7 +398,7 @@ app.post('/api/inventory/count', authRequired, requireRole('admin', 'gerente', '
 app.get('/api/lots', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT l.*, p.nome as produto FROM lots l JOIN products p ON p.id=l.product_id ORDER BY validade ASC LIMIT 200'))));
 app.post('/api/lots', authRequired, requireRole('admin', 'gerente', 'estoquista'), ah(async (req, res) => {
   const { product_id, lote, validade, qtd } = req.body || {};
-  if (!product_id || !qtd) return res.status(400).json({ error: 'Produto e quantidade obrigatórios.' });
+  if (!product_id || !(Number(qtd) > 0)) return res.status(400).json({ error: 'Produto e quantidade (maior que zero) obrigatórios.' });
   const r = await trun(T(req), 'INSERT INTO lots(product_id,lote,validade,qtd) VALUES(?,?,?,?)', product_id, lote || null, validade || null, qtd);
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 }));
@@ -396,7 +407,7 @@ app.post('/api/lots', authRequired, requireRole('admin', 'gerente', 'estoquista'
 app.get('/api/suppliers', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT * FROM suppliers ORDER BY fantasia, razao'))));
 app.post('/api/suppliers', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   const b = req.body || {};
-  const r = await trun(T(req), 'INSERT INTO suppliers(razao,fantasia,doc,tel,email,endereco,cond_pag) VALUES(?,?,?,?,?,?,?)', b.razao || '', b.fantasia || '', b.doc || '', b.tel || '', b.email || '', b.endereco || '', b.cond_pag || '');
+  const r = await trun(T(req), 'INSERT INTO suppliers(razao,fantasia,doc,tel,email,endereco,cond_pag) VALUES(?,?,?,?,?,?,?)', cleanStr(b.razao || ''), cleanStr(b.fantasia || ''), b.doc || '', b.tel || '', b.email || '', b.endereco || '', b.cond_pag || '');
   auditTdb(T(req), req.user, 'criar fornecedor', 'compras', b.fantasia || b.razao, null, b, req.ip);
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 }));
@@ -404,6 +415,7 @@ app.get('/api/customers', authRequired, ah(async (req, res) => res.json(await tq
 app.post('/api/customers', authRequired, ah(async (req, res) => {
   const b = req.body || {};
   if (!b.nome) return res.status(400).json({ error: 'Nome obrigatório.' });
+  b.nome = cleanStr(b.nome);
   const r = await trun(T(req), 'INSERT INTO customers(nome,doc,tel,email,endereco,obs,limite_fiado) VALUES(?,?,?,?,?,?,?)', b.nome, b.doc || '', b.tel || '', b.email || '', b.endereco || '', b.obs || '', b.limite_fiado || 0);
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 }));
@@ -414,6 +426,12 @@ app.post('/api/purchases', authRequired, requireRole('admin', 'gerente'), ah(asy
   const tdb = T(req);
   const { supplier_id, items } = req.body || {};
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Informe ao menos um item.' });
+  for (const it of items) {
+    if (!(Number(it.qtd) > 0)) return res.status(400).json({ error: 'Quantidade inválida no pedido.' });
+    if (Number(it.custo_unit) < 0) return res.status(400).json({ error: 'Custo inválido no pedido.' });
+    const ex = await tget(T(req), 'SELECT id FROM products WHERE id=?', it.product_id);
+    if (!ex) return res.status(400).json({ error: 'Produto inexistente no pedido.' });
+  }
   const total = items.reduce((s, it) => s + Number(it.qtd) * Number(it.custo_unit), 0);
   const r = await trun(tdb, 'INSERT INTO purchases(supplier_id,status,total,user_id) VALUES(?,?,?,?)', supplier_id || null, 'aberto', total, req.user.id);
   const pid = Number(r.lastInsertRowid);
@@ -488,6 +506,7 @@ app.get('/api/branches', authRequired, ah(async (req, res) => res.json(await tq(
 app.post('/api/branches', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   const b = req.body || {};
   if (!b.nome) return res.status(400).json({ error: 'Nome da filial/loja obrigatório.' });
+  b.nome = cleanStr(b.nome);
   const r = await trun(T(req), 'INSERT INTO branches(nome,cnpj,endereco,active) VALUES(?,?,?,?)', b.nome, b.cnpj || null, b.endereco || null, b.active === undefined ? 1 : (b.active ? 1 : 0));
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 }));
@@ -506,6 +525,7 @@ app.post('/api/transfers', authRequired, requireRole('admin', 'gerente', 'estoqu
   const dt = await tget(tdb, 'SELECT * FROM branches WHERE id=?', to_branch_id);
   if (!fo || !dt) return res.status(400).json({ error: 'Filial inexistente.' });
   for (const it of items) {
+    if (!(Number(it.qtd) > 0)) return res.status(400).json({ error: 'Quantidade inválida na transferência.' });
     const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', it.product_id);
     if (!p || Number(p.estoque_atual) < Number(it.qtd)) return res.status(400).json({ error: `Estoque insuficiente: ${p?.nome || 'item'}` });
   }
@@ -534,6 +554,11 @@ app.post('/api/recipes', authRequired, requireRole('admin', 'gerente'), ah(async
   const tdb = T(req);
   const { produto_acabado_id, nome, itens } = req.body || {};
   if (!produto_acabado_id || !nome) return res.status(400).json({ error: 'Produto e nome obrigatórios.' });
+  for (const it of (itens || [])) {
+    if (!(Number(it.qtd) > 0)) return res.status(400).json({ error: 'Quantidade inválida na ficha.' });
+    const ex = await tget(tdb, 'SELECT id FROM products WHERE id=?', it.insumo_id);
+    if (!ex) return res.status(400).json({ error: 'Insumo inexistente na ficha.' });
+  }
   const r = await trun(tdb, 'INSERT INTO recipes(produto_acabado_id,nome) VALUES(?,?)', produto_acabado_id, nome);
   const rid = Number(r.lastInsertRowid);
   for (const it of (itens || [])) await trun(tdb, 'INSERT INTO recipe_items(recipe_id,insumo_id,qtd) VALUES(?,?,?)', rid, it.insumo_id, it.qtd);
@@ -600,13 +625,16 @@ app.post('/api/sales', authRequired, ah(async (req, res) => {
     const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', it.product_id);
     if (!p) return res.status(400).json({ error: 'Produto inexistente.' });
     if (Number(p.estoque_atual) < Number(it.qtd) && p.tipo !== 'servico') return res.status(400).json({ error: `Estoque insuficiente: ${p.nome} (tem ${p.estoque_atual})` });
+    if (!(Number(it.qtd) > 0)) return res.status(400).json({ error: 'Quantidade inválida no item.' });
+    if (Number(it.preco_unit ?? p.preco_venda) < 0) return res.status(400).json({ error: 'Preço inválido no item.' });
     total += Number(it.qtd) * Number(it.preco_unit ?? p.preco_venda);
   }
   total = Number((total - Number(desconto || 0)).toFixed(2));
+  if (Number(desconto || 0) < 0) return res.status(400).json({ error: 'Desconto inválido.' });
   const METHODS = ['dinheiro', 'pix', 'cartao_credito', 'cartao_debito', 'fiado'];
   let pays = Array.isArray(payments) && payments.length
     ? payments.map(p => ({ method: p.method, amount: Number(p.amount) }))
-    : [{ method: pagamento, amount: total }];
+    : (total === 0 ? [] : [{ method: pagamento, amount: total }]);
   for (const p of pays) {
     if (!METHODS.includes(p.method)) return res.status(400).json({ error: 'Forma de pagamento inválida: ' + p.method });
     if (!(p.amount > 0)) return res.status(400).json({ error: 'Valores de pagamento inválidos.' });
@@ -616,7 +644,7 @@ app.post('/api/sales', authRequired, ah(async (req, res) => {
   const fiadoAmt = Number(pays.filter(p => p.method === 'fiado').reduce((s, p) => s + p.amount, 0).toFixed(2));
   if (fiadoAmt > 0 && !customer_id) return res.status(400).json({ error: 'Venda fiada exige cliente.' });
   const status = (awaiting || fiadoAmt > 0) ? 'aguardando_pagamento' : 'finalizada';
-  const pagtoLabel = pays.length > 1 ? 'multi' : pays[0].method;
+  const pagtoLabel = pays.length > 1 ? 'multi' : (pays[0] ? pays[0].method : 'cortesia');
   let caixaId = caixa_id || null;
   if (caixaId) {
     const cx = await tget(tdb, 'SELECT * FROM cash_registers WHERE id=?', caixaId);
@@ -709,6 +737,7 @@ app.post('/api/cash/:id/close', authRequired, ah(async (req, res) => {
   const tdb = T(req);
   const cx = await tget(tdb, 'SELECT * FROM cash_registers WHERE id=?', req.params.id);
   if (!cx || cx.status !== 'aberto') return res.status(400).json({ error: 'Caixa inexistente ou já fechado.' });
+  if (!['admin', 'gerente', 'superadmin'].includes(req.user.role) && cx.user_id !== req.user.id) return res.status(403).json({ error: 'Apenas quem abriu o caixa ou a gerência pode fechá-lo.' });
   const byMethod = await tq(tdb, `SELECT sp.method, COALESCE(SUM(sp.amount),0) t FROM sale_payments sp JOIN sales s ON s.id=sp.sale_id WHERE s.caixa_id=? AND s.status!='cancelada' GROUP BY sp.method`, cx.id);
   const vendido = byMethod.reduce((s, r) => s + Number(r.t), 0);
   const { saldo_final } = req.body || {};
