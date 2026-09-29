@@ -423,10 +423,11 @@ async function viewCompras(C) {
 // ---------- PDV ----------
 async function viewPDV(C) {
   setTitle('PDV', 'Venda rápida: caixa, multi-pagamento e PIX QR');
-  let prods = [], clis = [], cfg = {}, offmode = false;
+  let prods = [], clis = [], cats = [], cfg = {}, offmode = false, catSel = '';
   try {
     prods = (await api.get('/api/products?limit=100')).data.filter(p => p.status === 'ativo');
     clis = await api.get('/api/customers');
+    try { cats = await api.get('/api/categories'); } catch {}
     cfg = await api.get('/api/company').catch(() => ({}));
     localStorage.setItem('pdv_cache', JSON.stringify({ prods, clis, ts: Date.now() }));
   } catch (e) {
@@ -450,13 +451,13 @@ async function viewPDV(C) {
     <button class="btn sm ghost" id="pdv-held" title="Ver vendas seguradas">📋 Espera</button>
     <button class="btn sm danger" id="pdv-clear" title="Limpar carrinho atual">✕</button>
   </div>
-  <div class="grid g2 pdv-fit"><div class="card"><div class="row scan-row"><label style="flex:0 0 84px" title="Quantidade (ex: 15) ou use 15*CODIGO no campo ao lado">Qtd<input id="pdv-n" type="number" value="1" min="0" step="any"></label><label style="flex:1" title="Bipe o produto, digite código de barras/SKU/código ou nome + Enter">Bipar / código<input id="pdv-code" placeholder="🔫 Bipe ou código + Enter" autocomplete="off"></label></div><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" class="pdv-list-scroll"></div></div>
+  <div class="grid g2 pdv-fit"><div class="card"><div class="row scan-row"><label style="flex:0 0 84px" title="Quantidade (ex: 15) ou use 15*CODIGO no campo ao lado">Qtd<input id="pdv-n" type="number" value="1" min="0" step="any"></label><label style="flex:1" title="Bipe o produto, digite código de barras/SKU/código ou nome + Enter">Bipar / código<input id="pdv-code" placeholder="🔫 Bipe ou código + Enter" autocomplete="off"></label><button class="btn sm ghost" id="pdv-keys-btn" style="align-self:end" title="Teclado numérico touch">⌨</button></div><div id="pdv-keys" class="keypad hidden"></div><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-cats" class="chips"></div><div id="pdv-list" class="pdv-list-scroll tiles"></div></div>
   <div class="card"><h3>🧾 Carrinho <small id="cart-count" class="muted"></small></h3><div class="pdv-cart-scroll"><div id="cart"></div><div class="row" style="align-items:end"><label style="flex:1">Cliente<select id="cart-cli"><option value="">Balcão</option>${clis.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></label><button class="btn sm ghost" id="cli-add" title="Cadastrar cliente rápido">+</button></div>
   <div class="row" style="align-items:end"><label style="flex:1" title="CPF/CNPJ p/ programas de incentivo — vincula ou cadastra">CPF/CNPJ<input id="pdv-doc" inputmode="numeric" placeholder="Só números"></label><button class="btn sm ghost" id="pdv-docgo" title="Vincular cliente pelo documento">OK</button></div>
   <label>Desconto<input id="cart-desc" type="number" value="0" min="0"></label>
-  <h3>Pagamento (pode dividir)</h3><div id="pays"></div>
+  <h3>Pagamento</h3><div class="pay-quick"><button class="btn pq-din" data-pq="dinheiro" title="Tudo em dinheiro">💵 Dinheiro</button><button class="btn pq-pix" data-pq="pix" title="Tudo no Pix">⚡ Pix</button><button class="btn pq-cc" data-pq="cartao_credito" title="Tudo no crédito">💳 Crédito</button><button class="btn pq-cd" data-pq="cartao_debito" title="Tudo no débito">💳 Débito</button><button class="btn pq-fi" data-pq="fiado" title="Tudo fiado (exige cliente)">📒 Fiado</button></div><div id="pays"></div>
   <p><button class="btn sm ghost" id="pay-add" title="Adicionar outra forma (ex: parte dinheiro + parte crédito)">+ Forma de pagamento</button></p></div>
-  <div class="pdv-foot"><h2 id="cart-total">Total: R$ 0,00</h2><p id="pay-rest" class="muted"></p>
+  <div class="pdv-foot"><h2 id="cart-total" class="pdv-total-big">Total: R$ 0,00</h2><p id="pay-rest" class="muted"></p>
   <label><input type="checkbox" id="cart-wait" style="width:auto"> Deixar aguardando pagamento</label>
   <button class="btn primary" id="cart-fin" title="Finalizar venda">Finalizar venda</button></div></div></div>`;
   let cart = [];
@@ -534,8 +535,13 @@ async function viewPDV(C) {
   }
   function drawList() {
     const q = ($('#pdv-q').value || '').toLowerCase();
-    $('#pdv-list').innerHTML = prods.filter(p => p.nome.toLowerCase().includes(q)).slice(0, 50).map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--line)"><span><b>${p.nome}</b><br><small class="muted">${BRL(p.preco_venda)} · est ${p.estoque_atual}</small></span><button class="btn sm primary" data-a="${p.id}" title="Adicionar (usa a Qtd do campo)">+</button></div>`).join('');
+    const rows = prods.filter(p => (!q || p.nome.toLowerCase().includes(q)) && (!catSel || String(p.categoria_id) === catSel)).slice(0, 60);
+    $('#pdv-list').innerHTML = rows.map(p => `<button class="tile" data-a="${p.id}" title="${p.nome} — adicionar (usa a Qtd)"><span class="tname">${p.nome}</span><span class="tprice">${BRL(Number(p.preco_venda) * ptMult())}</span><small>est ${p.estoque_atual}</small></button>`).join('') || '<p class="muted">Nada encontrado.</p>';
     document.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { if (addToCart(b.dataset.a, Number($('#pdv-n').value) || 1)) { beep(true); drawCart(); } else { beep(false); toast('Produto/quantidade inválidos'); } });
+  }
+  function drawCats() {
+    $('#pdv-cats').innerHTML = `<button class="chip${!catSel ? ' active' : ''}" data-c="">Todas</button>` + cats.map(c => `<button class="chip${String(c.id) === catSel ? ' active' : ''}" data-c="${c.id}" title="Filtrar ${c.nome}">${c.nome}</button>`).join('');
+    document.querySelectorAll('#pdv-cats [data-c]').forEach(b => b.onclick = () => { catSel = b.dataset.c; drawCats(); drawList(); });
   }
   function drawCart() {
     $('#cart').innerHTML = cart.map((i, idx) => {
@@ -554,6 +560,25 @@ async function viewPDV(C) {
   }
   $('#pdv-q').oninput = drawList; $('#cart-desc').oninput = drawCart;
   $('#pay-add').onclick = () => { pays.push({ method: 'cartao_credito', amount: 0 }); drawPays(); };
+  document.querySelectorAll('[data-pq]').forEach(b => b.onclick = () => {
+    pays = [{ method: b.dataset.pq, amount: tot() }];
+    document.querySelectorAll('[data-pq]').forEach(x => x.classList.toggle('sel', x === b));
+    drawPays(); drawRest();
+  });
+  $('#pdv-keys-btn').onclick = () => {
+    const k = $('#pdv-keys');
+    if (!k.innerHTML) {
+      k.innerHTML = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'C', '⌫'].map(x => `<button data-k="${x}">${x}</button>`).join('');
+      k.querySelectorAll('[data-k]').forEach(btn => btn.onclick = () => {
+        const inp = $('#pdv-n'); const v = btn.dataset.k;
+        if (v === 'C') inp.value = '';
+        else if (v === '⌫') inp.value = String(inp.value).slice(0, -1);
+        else inp.value = String(inp.value || '') + v;
+        inp.focus();
+      });
+    }
+    k.classList.toggle('hidden');
+  };
   $('#pdv-cx').onchange = e => { caixaSel = e.target.value; localStorage.setItem('caixa', caixaSel); };
   $('#pdv-code').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
@@ -650,7 +675,7 @@ async function viewPDV(C) {
     modal(`<h3>🧾 Abrir caixa</h3><div class="row"><label>Caixa/terminal<input id="o-t" value="1" title="Ex: 1 ou 2"></label><label>Funcionário<input id="o-o" value="${ME.name}" title="Ex: Bianca"></label></div><label>Saldo inicial<input id="o-s" type="number" value="0"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="o-ok">Abrir</button></div>`);
     $('#o-ok').onclick = async () => { try { const j = await api.post('/api/cash/open', { terminal: $('#o-t').value, operator_name: $('#o-o').value, saldo_inicial: Number($('#o-s').value) }); closeModal(); localStorage.setItem('caixa', j.id); toast('✓ Caixa aberto!'); route(); } catch (e) { toast(e.message); } };
   };
-  drawList(); drawCart();
+  drawCats(); drawList(); drawCart();
   async function ensureDiscountOk() {
     const sub = cart.reduce((s, i) => s + Number(i.qtd) * Number(i.preco_unit), 0);
     const d = Number($('#cart-desc').value || 0);

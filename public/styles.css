@@ -220,6 +220,47 @@ input::placeholder { color: #94A3B8; }
 .cart-row .ln { font-weight: 750; white-space: nowrap; }
 .cart-row .btn { flex: none; padding: 6px 10px; }
 .scan-row label { margin-top: 0; }
+/* ---------- PDV supermercado: categorias, tiles touch, atalhos ---------- */
+.chips { display: flex; gap: 7px; overflow-x: auto; padding: 8px 2px; -webkit-overflow-scrolling: touch; }
+.chip {
+    flex: none; padding: 9px 15px; border-radius: 99px; border: 1.5px solid var(--line);
+    background: #fff; font-size: 13px; font-weight: 650; color: var(--ink-soft); cursor: pointer;
+    transition: all .15s ease; white-space: nowrap;
+}
+.chip:hover { border-color: var(--pri); color: var(--pri-h); }
+.chip.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 9px; }
+.tile {
+    display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+    background: #fff; border: 1.5px solid var(--line); border-radius: 14px; padding: 11px 10px;
+    cursor: pointer; font-family: inherit; transition: all .15s ease; min-height: 96px;
+}
+.tile:hover { border-color: var(--pri); transform: translateY(-2px); box-shadow: var(--sh-md); }
+.tile:active { transform: scale(.97); }
+.tile .tname { font-size: 13px; font-weight: 650; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .tprice { font-size: 15px; font-weight: 800; color: var(--pri-h); }
+.tile small { color: var(--mut); font-size: 11px; }
+.pay-quick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin: 8px 0; }
+.pay-quick .btn { padding: 10px 4px; font-size: 12.5px; }
+.pay-quick .pq-din { background: var(--ok-soft); color: #065F46; border: 1.5px solid #A7F3D0; }
+.pay-quick .pq-pix { background: #CCFBF1; color: #0F766E; border: 1.5px solid #99F6E4; }
+.pay-quick .pq-cc { background: var(--info-soft); color: var(--info-ink); border: 1.5px solid #BFDBFE; }
+.pay-quick .pq-cd { background: #E0E7FF; color: #3730A3; border: 1.5px solid #C7D2FE; }
+.pay-quick .pq-fi { background: var(--warn-soft); color: #92400E; border: 1.5px solid #FDE68A; }
+.pay-quick .btn.sel { outline: 2px solid currentColor; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 8px; }
+.keypad button {
+    padding: 13px 0; font-size: 17px; font-weight: 750; border-radius: 12px;
+    border: 1.5px solid var(--line); background: #F8FAFC; cursor: pointer; transition: all .12s ease;
+}
+.keypad button:hover { border-color: var(--pri); color: var(--pri-h); }
+.keypad button:active { transform: scale(.95); }
+.pdv-total-big { font-size: 30px !important; }
+@media (max-width: 640px) {
+    .tiles { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+    .pay-quick { grid-template-columns: repeat(5, 1fr); }
+    .pay-quick .btn { font-size: 11px; padding: 9px 2px; }
+}
 @media (min-width: 901px) {
     .pdv-fit { height: calc(100dvh - 215px); min-height: 360px; }
     .pdv-fit > .card { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
