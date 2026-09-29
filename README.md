@@ -39,6 +39,13 @@ Layout adaptado p/ desktop, notebook, tablet e celular: menu gaveta com overlay,
 - Admin da empresa: **Empresa → Escolher logo** (imagem é redimensionada p/ 256px e aparece no menu).
 - Desenvolvedor: **Painel SaaS → ✏️** edita nome, segmento, plano, ativa e logo de qualquer cliente.
 
+## Banco de dados: SQLite local ou PostgreSQL (Neon)
+- **Padrão:** sem `DATABASE_URL`, roda em SQLite (zero config).
+- **PostgreSQL:** defina `DATABASE_URL` no `.env` (Neon: dashboard → **Connect** → copie a string, termina com `?sslmode=require`). O app cria sozinho: tabelas globais + 1 schema `tenant_<id>` isolado por empresa.
+- **Levar seus dados p/ o Neon:** `npm run migrate:pg` (com `DATABASE_URL` definida) copia empresas, usuários e todos os tenants do SQLite.
+- **Ver o schema:** `schema-pg.sql` (pode colar no OneCompiler → PostgreSQL para visualizar a estrutura).
+- O OneCompiler é só playground de teste — o app precisa de um Postgres real (Neon/Supabase/local).
+
 ## Vender para várias empresas
 1. Entre como `saas@dono.com` → **Painel SaaS → + Nova empresa cliente** (cria banco isolado).
 2. Ou cada cliente se cadastra sozinho em **Cadastrar empresa**.

@@ -12,23 +12,29 @@ function sign(user) {
   return jwt.sign({ id: user.id, company_id: user.company_id || null, role: user.role, name: user.name, email: user.email }, SECRET, { expiresIn: EXPIRES });
 }
 
-function authRequired(req, res, next) {
+async function authRequired(req, res, next) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Não autenticado. Faça login.' });
   try {
     const payload = jwt.verify(token, SECRET);
-    const u = mget('SELECT u.*, c.nome as company_nome, c.segmento as company_segmento FROM users u LEFT JOIN companies c ON c.id=u.company_id WHERE u.id=?', payload.id);
+    const u = await mget('SELECT u.*, c.nome as company_nome, c.segmento as company_segmento FROM users u LEFT JOIN companies c ON c.id=u.company_id WHERE u.id=?', payload.id);
     if (!u || !u.active) return res.status(401).json({ error: 'Usuário desativado ou inexistente.' });
     if (u.company_id) {
-      const c = mget('SELECT * FROM companies WHERE id=?', u.company_id);
+      const c = await mget('SELECT * FROM companies WHERE id=?', u.company_id);
       if (!c || !c.ativa) return res.status(403).json({ error: 'Empresa desativada. Fale com o suporte.' });
     }
     req.user = { id: u.id, name: u.name, email: u.email, role: u.role, company_id: u.company_id, company_nome: u.company_nome, company_segmento: u.company_segmento };
-    // anexa banco isolado da empresa (exceto superadmin sem empresa)
-    if (u.company_id) req.tdb = getTenantDb(u.company_id);
+    // anexa banco/schema isolado da empresa (exceto superadmin sem empresa)
+    if (u.company_id) {
+      try { req.tdb = await getTenantDb(u.company_id); }
+      catch { return res.status(401).json({ error: 'Empresa não identificada.' }); }
+    }
     next();
-  } catch { return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' }); }
+  } catch (e) {
+    if (res.headersSent) return;
+    return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' });
+  }
 }
 
 function requireRole(...roles) {
