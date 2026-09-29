@@ -41,7 +41,7 @@ Layout adaptado p/ desktop, notebook, tablet e celular: menu gaveta com overlay,
 
 ## Banco de dados: SQLite local ou PostgreSQL (Neon)
 - **Padrão:** sem `DATABASE_URL`, roda em SQLite (zero config).
-- **PostgreSQL:** defina `DATABASE_URL` no `.env` (Neon: dashboard → **Connect** → copie a string, termina com `?sslmode=require`). O app cria sozinho: tabelas globais + 1 schema `tenant_<id>` isolado por empresa.
+- **PostgreSQL:** defina `DATABASE_URL` no `.env` (Neon: dashboard → **Connect** → copie a string, termina com `?sslmode=require`). O app converte sozinho string pooler (`-pooler`) para endpoint direto e cria: tabelas globais + 1 schema `tenant_<id>` isolado por empresa.
 - **Levar seus dados p/ o Neon:** `npm run migrate:pg` (com `DATABASE_URL` definida) copia empresas, usuários e todos os tenants do SQLite.
 - **Ver o schema:** `schema-pg.sql` (pode colar no OneCompiler → PostgreSQL para visualizar a estrutura).
 - O OneCompiler é só playground de teste — o app precisa de um Postgres real (Neon/Supabase/local).

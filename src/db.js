@@ -11,7 +11,23 @@ if (USE_PG) {
   const { Pool, types } = require('pg');
   // DATE como string 'YYYY-MM-DD' (evita deslocamento de fuso no front)
   try { types.setTypeParser(types.builtins.DATE, v => v); } catch {}
-  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 });
+  let url = process.env.DATABASE_URL;
+  // Neon pooler (modo transação) não preserva SET search_path por sessão:
+  // converte automaticamente para o endpoint DIRETO (padrão documentado do Neon).
+  if (/-pooler\./.test(url)) {
+    url = url.replace(/-pooler\./, '.');
+    console.log('Neon pooler detectado: usando endpoint direto para conexões estáveis.');
+  }
+  pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 5 });
+}
+// Executa SEMPRE com search_path + timezone explícitos (nunca confia em estado anterior da conexão)
+async function pgExec(searchPath, text, params) {
+  const c = await pool.connect();
+  try {
+    await c.query(`SET search_path TO "${searchPath}", public`);
+    await c.query(`SET TIME ZONE 'America/Sao_Paulo'`);
+    return await c.query(text, params);
+  } finally { c.release(); }
 }
 
 // Converte SQL escrito com placeholders SQLite (?) para Postgres ($1, $2...)
@@ -147,7 +163,7 @@ function dbLiteMaster() {
 function tenantPath(companyId) { return path.join(DATA_DIR, `tenant_${companyId}.sqlite`); }
 
 async function initMaster() {
-  if (USE_PG) { await pool.query(MASTER_DDL_PG); return; }
+  if (USE_PG) { await pgExec('public', MASTER_DDL_PG, []); return; }
   const m = dbLiteMaster();
   m.exec(MASTER_DDL_LITE);
   try {
@@ -166,12 +182,8 @@ async function getTenantDb(companyId) {
   if (!companyId) throw new Error('Empresa não identificada');
   if (USE_PG) {
     const schema = tenantSchemaName(companyId);
-    const c = await pool.connect();
-    try {
-      await c.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
-      await c.query(`SET search_path TO "${schema}", public`);
-      await c.query(TENANT_DDL_PG);
-    } finally { c.release(); }
+    await pgExec('public', `CREATE SCHEMA IF NOT EXISTS "${schema}"`, []);
+    await pgExec(schema, TENANT_DDL_PG, []);
     return { pg: true, schema };
   }
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -191,64 +203,42 @@ async function getTenantDb(companyId) {
 
 // ================= API unificada (async) =================
 async function mq(sql, ...p) {
-  if (USE_PG) return (await pool.query(toPg(sql).text, p)).rows;
+  if (USE_PG) return (await pgExec('public', toPg(sql).text, p)).rows;
   return dbLiteMaster().prepare(sql).all(...p);
 }
 async function mget(sql, ...p) {
-  if (USE_PG) { const r = await pool.query(toPg(sql).text, p); return r.rows[0]; }
+  if (USE_PG) { const r = await pgExec('public', toPg(sql).text, p); return r.rows[0]; }
   return dbLiteMaster().prepare(sql).get(...p);
 }
 async function mrun(sql, ...p) {
   if (USE_PG) {
     const t = toPg(sql);
     const ret = !t.ignore && needsReturning(sql) ? ' RETURNING id' : '';
-    const r = await pool.query(t.text + ret, p);
+    const r = await pgExec('public', t.text + ret, p);
     return { lastInsertRowid: r.rows[0] ? r.rows[0].id : undefined, changes: r.rowCount };
   }
   return dbLiteMaster().prepare(sql).run(...p);
 }
-async function pgTenantClient(schema) {
-  const c = await pool.connect();
-  await c.query(`SET search_path TO "${schema}", public`);
-  await c.query(`SET TIME ZONE 'America/Sao_Paulo'`);
-  return c;
-}
 async function tq(h, sql, ...p) {
-  if (h.pg) {
-    const c = await pgTenantClient(h.schema);
-    try { return (await c.query(toPg(sql).text, p)).rows; }
-    finally { c.release(); }
-  }
+  if (h.pg) return (await pgExec(h.schema, toPg(sql).text, p)).rows;
   return h.db.prepare(sql).all(...p);
 }
 async function tget(h, sql, ...p) {
-  if (h.pg) {
-    const c = await pgTenantClient(h.schema);
-    try { const r = await c.query(toPg(sql).text, p); return r.rows[0]; }
-    finally { c.release(); }
-  }
+  if (h.pg) { const r = await pgExec(h.schema, toPg(sql).text, p); return r.rows[0]; }
   return h.db.prepare(sql).get(...p);
 }
 async function trun(h, sql, ...p) {
   if (h.pg) {
-    const c = await pgTenantClient(h.schema);
-    try {
-      const t = toPg(sql);
-      const ret = !t.ignore && needsReturning(sql) ? ' RETURNING id' : '';
-      const r = await c.query(t.text + ret, p);
-      return { lastInsertRowid: r.rows[0] ? r.rows[0].id : undefined, changes: r.rowCount };
-    } finally { c.release(); }
+    const t = toPg(sql);
+    const ret = !t.ignore && needsReturning(sql) ? ' RETURNING id' : '';
+    const r = await pgExec(h.schema, t.text + ret, p);
+    return { lastInsertRowid: r.rows[0] ? r.rows[0].id : undefined, changes: r.rowCount };
   }
   return h.db.prepare(sql).run(...p);
 }
 
 async function deleteTenant(companyId) {
-  if (USE_PG) {
-    const c = await pool.connect();
-    try { await c.query(`DROP SCHEMA IF EXISTS "${tenantSchemaName(companyId)}" CASCADE`); }
-    finally { c.release(); }
-    return;
-  }
+  if (USE_PG) { await pgExec('public', `DROP SCHEMA IF EXISTS "${tenantSchemaName(companyId)}" CASCADE`, []); return; }
   try { liteTenants.get(companyId)?.db.close(); } catch {}
   liteTenants.delete(companyId);
   const f = tenantPath(companyId);

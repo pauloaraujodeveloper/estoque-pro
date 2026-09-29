@@ -1,3 +1,4 @@
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 // Sistema de Controle de Estoque Multissegmento — SaaS MULTI-EMPRESA
 // Banco: PostgreSQL (DATABASE_URL) ou SQLite local (fallback).
 // PG = 1 database + 1 SCHEMA isolado por empresa (tenant_<id>). SQLite = 1 arquivo por empresa.
@@ -546,6 +547,7 @@ app.get('*', (req, res) => {
 
 async function boot() {
   await initMaster();
+  console.log('DB:', (process.env.DATABASE_URL || 'sqlite-local').replace(/:[^:@/]+@/, ':***@').slice(0, 90));
   app.listen(PORT, () => console.log(`Controle de Estoque MULTI-EMPRESA (${process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite'}) em http://localhost:${PORT}`));
 }
 boot().catch(e => { console.error('Falha ao iniciar:', e); process.exit(1); });

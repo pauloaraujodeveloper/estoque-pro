@@ -1,3 +1,4 @@
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 // Seed multi-empresa: cria provedor SaaS + 2 empresas isoladas com dados demo
 // Roda em SQLite (sem DATABASE_URL) ou PostgreSQL (com DATABASE_URL).
 const { initMaster, mrun, mget, getTenantDb, tq, tget, trun } = require('./db');

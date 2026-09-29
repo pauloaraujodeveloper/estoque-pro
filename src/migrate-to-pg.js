@@ -1,3 +1,4 @@
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 // Migra TUDO do SQLite local para o PostgreSQL (Neon/Supabase/local).
 // Uso:  $env:DATABASE_URL="postgresql://user:pass@host:5432/db?sslmode=require"; node src/migrate-to-pg.js
 // Idempotente: pode rodar de novo (ignora o que já existe).
