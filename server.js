@@ -6,7 +6,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { initMaster, mq, mget, mrun, getTenantDb, tq, tget, trun, deleteTenant, TODAY } = require('./src/db');
+const { initMaster, mq, mget, mrun, getTenantDb, tq, tget, trun, deleteTenant, TODAY, USE_PG, pool } = require('./src/db');
 const { hashPass, checkPass, sign, authRequired, requireRole, requireSuperadmin, filterProductByRole } = require('./src/auth');
 const { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara } = require('./src/utils');
 
@@ -18,13 +18,30 @@ const PORT = process.env.PORT || 3000;
 
 // No serverless (Vercel) o banco é inicializado 1x por instância, antes das rotas /api
 let ready = null;
+let readyError = null;
 function ensureReady() {
-  if (!ready) ready = initMaster().catch(e => { ready = null; throw e; });
+  if (!ready) ready = initMaster().catch(e => { ready = null; readyError = e; throw e; });
   return ready;
 }
+// Diagnóstico público: abra /api/health no navegador p/ ver o estado do banco
+app.get('/api/health', async (req, res) => {
+  try {
+    await ensureReady();
+    if (USE_PG) await pool.query('SELECT 1');
+    res.json({ ok: true, mode: USE_PG ? 'postgres' : 'sqlite', time: new Date().toISOString() });
+  } catch (e) {
+    res.status(500).json({ ok: false, mode: USE_PG ? 'postgres' : 'sqlite', error: String((e && e.message) || e).slice(0, 300) });
+  }
+});
 app.use('/api', (req, res, next) => {
-  ensureReady().then(() => next()).catch(() => {
-    if (!res.headersSent) res.status(500).json({ error: 'Banco indisponível. Tente novamente.' });
+  ensureReady().then(() => next()).catch((e) => {
+    console.error('DB init falhou:', e && e.message);
+    if (!res.headersSent) {
+      const msg = !process.env.DATABASE_URL
+        ? 'Banco não configurado. Defina DATABASE_URL (PostgreSQL/Neon) nas Environment Variables do Vercel e faça redeploy.'
+        : 'Banco indisponível (' + String((e && e.message) || e).slice(0, 120) + '). Tente novamente.';
+      res.status(500).json({ error: msg });
+    }
   });
 });
 
