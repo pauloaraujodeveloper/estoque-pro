@@ -202,6 +202,22 @@ input::placeholder { color: #94A3B8; }
 .pdv-brand { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; border-left: 4px solid var(--pri); }
 .pdv-brand h2 { margin: 0; font-size: 18px; }
 .pdv-brand p { margin: 2px 0 0; }
+/* ---------- PDV em tela cheia (sem rolagem da página no desktop) ---------- */
+.pdv-top { margin-bottom: 12px; }
+.pdv-top .card { margin: 0; }
+@media (min-width: 901px) {
+    .pdv-fit { height: calc(100dvh - 310px); min-height: 340px; }
+    .pdv-fit > .card { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    .pdv-list-scroll { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; padding-right: 4px; }
+    .pdv-cart-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+    .pdv-foot { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 8px; background: var(--card); }
+    .pdv-foot h2 { margin: 0 0 2px; font-size: 21px; }
+    .pdv-foot .btn.primary { margin-top: 8px; }
+}
+@media (max-width: 900px) {
+    .pdv-list-scroll { max-height: 320px; overflow-y: auto; margin-top: 8px; }
+    .pdv-cart-scroll { max-height: 320px; overflow-y: auto; }
+}
 
 /* ---------- TABELAS ---------- */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--r); border: 1px solid var(--line); background: var(--card); box-shadow: var(--sh-sm); }

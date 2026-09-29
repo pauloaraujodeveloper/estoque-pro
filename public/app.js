@@ -429,19 +429,21 @@ async function viewPDV(C) {
   let coPDV = {};
   try { coPDV = await api.get('/api/company'); } catch {}
   C.innerHTML = `
-  <div class="card pdv-brand">${coPDV.logo ? `<img class="co-logo lg" src="${coPDV.logo}" alt="Logo">` : '<span class="logo">🧾</span>'}<div><h2>PDV ${coPDV.nome ? '· ' + coPDV.nome : ''}</h2><p class="muted">Frente de caixa rápida com baixa automática</p></div></div>
-  <div class="card" style="margin-bottom:12px"><div class="row">
+  <div class="grid g2 pdv-top">
+  <div class="card pdv-brand" style="margin:0">${coPDV.logo ? `<img class="co-logo lg" src="${coPDV.logo}" alt="Logo">` : '<span class="logo">🧾</span>'}<div><h2>PDV ${coPDV.nome ? '· ' + coPDV.nome : ''}</h2><p class="muted">Frente de caixa rápida com baixa automática</p></div></div>
+  <div class="card" style="margin:0"><div class="row">
     <label title="Caixa/terminal em uso. Ex: caixa 1">Caixa<select id="pdv-cx"><option value="">Sem caixa</option>${abertos.map(c => `<option value="${c.id}" ${String(c.id) === String(caixaSel) ? 'selected' : ''}>Caixa ${c.terminal} · ${c.operator_name || ''}</option>`).join('')}</select></label>
     <label title="Funcionário operador do caixa">Operador<input id="pdv-op" value="${ME.name}"></label>
   </div><button class="btn sm ghost" id="pdv-open" title="Abrir novo turno de caixa">🧾 Abrir caixa</button></div>
-  <div class="grid g2"><div class="card"><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" style="max-height:340px;overflow:auto;margin-top:8px"></div></div>
-  <div class="card"><h3>🧾 Carrinho</h3><div id="cart"></div><label>Cliente<select id="cart-cli"><option value="">Balcão</option>${clis.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></label>
+  </div>
+  <div class="grid g2 pdv-fit"><div class="card"><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" class="pdv-list-scroll"></div></div>
+  <div class="card"><h3>🧾 Carrinho</h3><div class="pdv-cart-scroll"><div id="cart"></div><label>Cliente<select id="cart-cli"><option value="">Balcão</option>${clis.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></label>
   <label>Desconto<input id="cart-desc" type="number" value="0" min="0"></label>
   <h3>Pagamento (pode dividir)</h3><div id="pays"></div>
-  <p><button class="btn sm ghost" id="pay-add" title="Adicionar outra forma (ex: parte dinheiro + parte crédito)">+ Forma de pagamento</button></p>
-  <h2 id="cart-total">Total: R$ 0,00</h2><p id="pay-rest" class="muted"></p>
-  <label><input type="checkbox" id="cart-wait" style="width:auto"> Deixar aguardando pagamento</label><br><br>
-  <button class="btn primary" id="cart-fin" title="Finalizar: baixa estoque, financeiro e auditoria">Finalizar venda</button></div></div>`;
+  <p><button class="btn sm ghost" id="pay-add" title="Adicionar outra forma (ex: parte dinheiro + parte crédito)">+ Forma de pagamento</button></p></div>
+  <div class="pdv-foot"><h2 id="cart-total">Total: R$ 0,00</h2><p id="pay-rest" class="muted"></p>
+  <label><input type="checkbox" id="cart-wait" style="width:auto"> Deixar aguardando pagamento</label>
+  <button class="btn primary" id="cart-fin" title="Finalizar: baixa estoque, financeiro e auditoria">Finalizar venda</button></div></div></div>`;
   let cart = [];
   let pays = [{ method: 'dinheiro', amount: 0 }];
   const PM = [['dinheiro', 'Dinheiro'], ['pix', 'Pix'], ['cartao_credito', 'Crédito'], ['cartao_debito', 'Débito'], ['fiado', 'Fiado']];
