@@ -177,6 +177,9 @@ input::placeholder { color: #94A3B8; }
 .icon-btn:hover { background: #E2E8F0; transform: translateY(-1px); }
 .badge { position: absolute; top: -7px; right: -7px; background: var(--bad); color: #fff; border-radius: 99px; font-size: 11px; font-weight: 700; padding: 1px 7px; box-shadow: var(--sh-sm); }
 .pill { background: var(--pri-soft); color: var(--pri-h); border: 1px solid #E0E7FF; border-radius: 99px; padding: 6px 13px; font-size: 12px; font-weight: 700; }
+#net-status { display: inline-block; }
+#net-status.off { background: var(--bad-soft); color: var(--bad); border-color: #FECDD3; animation: blink 1.6s infinite; }
+@keyframes blink { 50% { opacity: .55; } }
 #ctx-bar { display: flex; gap: 10px; align-items: center; justify-content: space-between; background: var(--warn-soft); border-bottom: 1px solid #FCD34D; color: #92400E; padding: 9px 20px; font-size: 13px; font-weight: 600; }
 #content { padding: 22px; max-width: 1220px; width: 100%; margin: 0 auto; animation: fadeUp .25s ease; }
 
