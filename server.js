@@ -16,6 +16,18 @@ app.use(express.json({ limit: '10mb' })); // 10mb p/ upload de logo em base64
 app.use(express.static(path.join(__dirname, 'public')));
 const PORT = process.env.PORT || 3000;
 
+// No serverless (Vercel) o banco é inicializado 1x por instância, antes das rotas /api
+let ready = null;
+function ensureReady() {
+  if (!ready) ready = initMaster().catch(e => { ready = null; throw e; });
+  return ready;
+}
+app.use('/api', (req, res, next) => {
+  ensureReady().then(() => next()).catch(() => {
+    if (!res.headersSent) res.status(500).json({ error: 'Banco indisponível. Tente novamente.' });
+  });
+});
+
 // wrapper p/ handlers async no Express 4
 const ah = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(e => {
   console.error(e);
@@ -550,5 +562,10 @@ async function boot() {
   console.log('DB:', (process.env.DATABASE_URL || 'sqlite-local').replace(/:[^:@/]+@/, ':***@').slice(0, 90));
   app.listen(PORT, () => console.log(`Controle de Estoque MULTI-EMPRESA (${process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite'}) em http://localhost:${PORT}`));
 }
-boot().catch(e => { console.error('Falha ao iniciar:', e); process.exit(1); });
+// Local/npm start: sobe o servidor. Vercel (serverless): só exporta o app.
+if (!process.env.VERCEL && require.main === module) {
+  boot().catch(e => { console.error('Falha ao iniciar:', e); process.exit(1); });
+} else if (process.env.VERCEL) {
+  ensureReady().catch(e => console.error('Falha init (serverless):', e.message));
+}
 module.exports = app;

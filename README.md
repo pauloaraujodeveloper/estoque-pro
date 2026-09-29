@@ -52,6 +52,16 @@ Layout adaptado p/ desktop, notebook, tablet e celular: menu gaveta com overlay,
 3. Cada empresa vê só seus dados. Backup por empresa = copiar `data/tenant_<id>.sqlite`.
 4. Desativar empresa bloqueia login dela sem apagar dados. Excluir apaga só o tenant.
 
+## Deploy no Vercel (com Neon)
+1. Suba o código no GitHub (já está: `estoque-pro`).
+2. Em vercel.com → **Add New → Project** → importe o repositório.
+3. Em **Environment Variables**, adicione:
+   - `DATABASE_URL` = sua string do Neon (`...?sslmode=require`)
+   - `JWT_SECRET` = uma frase longa secreta
+4. **Deploy**. O app roda em modo serverless (`api/index.js`); o banco é criado sozinho no primeiro acesso.
+5. Rode o seed 1x apontando p/ o Neon localmente (`DATABASE_URL=... npm run seed`) ou cadastre a empresa pela tela.
+- Erro 500 `FUNCTION_INVOCATION_FAILED` = a função quebrou sem `DATABASE_URL` ou sem as tabelas: confira as env vars e acesse `/api/me` para testar.
+
 ## Fluxo de aceite
 Login → Dashboard → Produto → Fornecedor → Compra → Receber (estoque/custo) → Margem → PDV → baixa → financeiro → relatórios → Kardex → auditoria.
 
