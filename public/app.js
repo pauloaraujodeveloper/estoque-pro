@@ -51,6 +51,14 @@ $('#form-signup').onsubmit = async e => {
   } catch (err) { $('#signup-err').textContent = err.message; }
 };
 $('#btn-logout').onclick = () => { localStorage.removeItem('token'); location.reload(); };
+$('#link-recover').onclick = (e) => {
+  e.preventDefault();
+  modal(`<h3>Recuperar senha</h3><p class="muted">Informe seu e-mail para receber uma senha temporária.</p><label>E-mail<input id="rc-email" type="email" value="${($('#login-email').value || '').replace(/"/g, '&quot;')}"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="rc-ok">Enviar</button></div>`);
+  $('#rc-ok').onclick = async () => {
+    try { const j = await api.post('/api/auth/recover', { email: $('#rc-email').value.trim() }); closeModal(); toast(j.message); }
+    catch (err) { toast(err.message); }
+  };
+};
 $('#btn-menu').onclick = () => { const s = $('#sidebar'); s.classList.toggle('open'); $('#overlay').classList.toggle('hidden', !s.classList.contains('open')); };
 $('#overlay').onclick = () => { $('#sidebar').classList.remove('open'); $('#overlay').classList.add('hidden'); };
 $('#bell').onclick = async () => { const a = await api.get('/api/alerts'); modal(`<h3>🔔 Alertas</h3>${a.length ? a.map(x => `<p>${x.nivel === 'critico' ? '🔴' : x.nivel === 'baixo' ? '🟡' : '🟠'} ${x.msg}</p>`).join('') : '<p class="muted">Nenhum alerta. Tudo certo!</p>'}<button class="btn ghost" onclick="closeModal()">Fechar</button>`); };

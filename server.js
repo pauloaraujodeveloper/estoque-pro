@@ -9,6 +9,8 @@ const path = require('path');
 const { initMaster, mq, mget, mrun, getTenantDb, tq, tget, trun, deleteTenant, TODAY, USE_PG, pool } = require('./src/db');
 const { hashPass, checkPass, sign, authRequired, requireRole, requireSuperadmin, filterProductByRole } = require('./src/auth');
 const { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara } = require('./src/utils');
+const { sendMail, welcomeHtml, tempPassHtml, mailConfigured } = require('./src/mailer');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -112,6 +114,7 @@ app.post('/api/auth/signup-company', ah(async (req, res) => {
   }
   const u = await mrun('INSERT INTO users(company_id,name,email,pass_hash,role) VALUES(?,?,?,?,?)', company_id, user_name, String(email).toLowerCase(), await hashPass(password), 'admin');
   const user = { id: Number(u.lastInsertRowid), company_id, role: 'admin', name: user_name, email: String(email).toLowerCase() };
+  try { await sendMail({ to: user.email, subject: 'Bem-vindo ao EstoquePro', html: welcomeHtml(company_nome, user_name) }); } catch {}
   res.status(201).json({ token: sign(user), user, company_id });
 }));
 
@@ -131,7 +134,28 @@ app.post('/api/auth/login', ah(async (req, res) => {
   res.json({ token: sign({ ...user }), user });
 }));
 app.get('/api/me', authRequired, (req, res) => res.json({ user: req.user }));
-app.post('/api/auth/recover', (req, res) => res.json({ message: 'Peça ao administrador da sua empresa para redefinir sua senha em Usuários.' }));
+app.post('/api/auth/recover', ah(async (req, res) => {
+  const { email } = req.body || {};
+  // resposta genérica (não revela se o e-mail existe)
+  const done = { message: 'Se o e-mail estiver cadastrado, você receberá uma senha temporária.' };
+  if (!email) return res.json(done);
+  const u = await mget('SELECT * FROM users WHERE lower(email)=lower(?)', String(email));
+  if (!u || !u.active) return res.json(done);
+  const tmp = crypto.randomBytes(4).toString('hex');
+  await mrun('UPDATE users SET pass_hash=? WHERE id=?', await hashPass(tmp), u.id);
+  if (u.company_id) {
+    try { auditTdb(await getTenantDb(u.company_id), { id: u.id, name: u.name }, 'recuperar senha', 'auth', u.email, null, null, req.ip); } catch {}
+  }
+  try { await sendMail({ to: u.email, subject: 'Sua senha temporária - EstoquePro', html: tempPassHtml(u.name, tmp) }); }
+  catch { return res.status(500).json({ error: 'Não foi possível enviar o e-mail. Fale com o administrador.' }); }
+  res.json(done);
+}));
+// Teste de e-mail (admin/superadmin): verifica RESEND_API_KEY + remetente
+app.post('/api/notify/test', authRequired, requireRole('admin'), ah(async (req, res) => {
+  const to = (req.body && req.body.to) || req.user.email;
+  const r = await sendMail({ to, subject: 'EstoquePro: e-mail de teste', html: '<p>✅ Envio via Resend funcionando!</p>' });
+  res.json({ ok: true, ...r, to, from: process.env.MAIL_FROM || 'onboarding@resend.dev', configured: mailConfigured() });
+}));
 
 // ============ PAINEL DO PROVEDOR SaaS (dono do sistema) ============
 app.get('/api/saas/companies', authRequired, requireSuperadmin, ah(async (req, res) => {
