@@ -62,6 +62,33 @@ const MASTER_DDL_PG = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
   ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo TEXT;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS person_type TEXT DEFAULT 'PJ';
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS doc TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS ie TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS im TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS cep TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS street TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS number TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS district TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS city TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS uf TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS pix_key TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS pix_key_type TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS pix_name TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS pix_city TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_name TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_agency TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_account TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS holder_type TEXT DEFAULT 'PJ';
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS tax_regime TEXT DEFAULT 'simples';
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS icms_default DOUBLE PRECISION DEFAULT 0;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS pis_default DOUBLE PRECISION DEFAULT 0;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS cofins_default DOUBLE PRECISION DEFAULT 0;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS printer_coupon TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS printer_nfe TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS paper_width TEXT DEFAULT '80mm';
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS receipt_footer TEXT;
+  ALTER TABLE companies ADD COLUMN IF NOT EXISTS reorder_mode TEXT DEFAULT 'min';
 `;
 
 const TENANT_DDL_PG = `
@@ -94,6 +121,19 @@ const TENANT_DDL_PG = `
   CREATE TABLE IF NOT EXISTS cash_registers(id SERIAL PRIMARY KEY, user_id INTEGER, saldo_inicial DOUBLE PRECISION DEFAULT 0, saldo_final DOUBLE PRECISION, status TEXT DEFAULT 'aberto', aberto_em TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, fechado_em TIMESTAMPTZ);
   CREATE TABLE IF NOT EXISTS audit_logs(id SERIAL PRIMARY KEY, user_id INTEGER, user_name TEXT, acao TEXT, modulo TEXT, registro TEXT, antes TEXT, depois TEXT, ip TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS notifications(id SERIAL PRIMARY KEY, tipo TEXT, mensagem TEXT, lida INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
+  CREATE TABLE IF NOT EXISTS branches(id SERIAL PRIMARY KEY, nome TEXT NOT NULL, cnpj TEXT, endereco TEXT, active INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
+  CREATE TABLE IF NOT EXISTS transfers(id SERIAL PRIMARY KEY, from_branch_id INTEGER, to_branch_id INTEGER, status TEXT DEFAULT 'concluida', notes TEXT, user_id INTEGER, user_name TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
+  CREATE TABLE IF NOT EXISTS transfer_items(id SERIAL PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES transfers(id) ON DELETE CASCADE, product_id INTEGER NOT NULL, qtd DOUBLE PRECISION NOT NULL);
+  CREATE TABLE IF NOT EXISTS sale_payments(id SERIAL PRIMARY KEY, sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE, method TEXT NOT NULL, amount DOUBLE PRECISION NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
+  ALTER TABLE products ADD COLUMN IF NOT EXISTS ncm TEXT;
+  ALTER TABLE products ADD COLUMN IF NOT EXISTS cest TEXT;
+  ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_rate DOUBLE PRECISION DEFAULT 0;
+  ALTER TABLE sales ADD COLUMN IF NOT EXISTS caixa_id INTEGER;
+  ALTER TABLE sales ADD COLUMN IF NOT EXISTS operator_name TEXT;
+  ALTER TABLE purchases ADD COLUMN IF NOT EXISTS nf_number TEXT;
+  ALTER TABLE purchases ADD COLUMN IF NOT EXISTS nf_key TEXT;
+  ALTER TABLE cash_registers ADD COLUMN IF NOT EXISTS operator_name TEXT;
+  ALTER TABLE cash_registers ADD COLUMN IF NOT EXISTS terminal TEXT;
 `;
 
 const MASTER_DDL_LITE = `
@@ -143,6 +183,10 @@ const TENANT_DDL_LITE = `
   CREATE TABLE IF NOT EXISTS cash_registers(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, saldo_inicial REAL DEFAULT 0, saldo_final REAL, status TEXT DEFAULT 'aberto', aberto_em TEXT DEFAULT (datetime('now','localtime')), fechado_em TEXT);
   CREATE TABLE IF NOT EXISTS audit_logs(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, user_name TEXT, acao TEXT, modulo TEXT, registro TEXT, antes TEXT, depois TEXT, ip TEXT, created_at TEXT DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, mensagem TEXT, lida INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS branches(id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, cnpj TEXT, endereco TEXT, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS transfers(id INTEGER PRIMARY KEY AUTOINCREMENT, from_branch_id INTEGER, to_branch_id INTEGER, status TEXT DEFAULT 'concluida', notes TEXT, user_id INTEGER, user_name TEXT, created_at TEXT DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS transfer_items(id INTEGER PRIMARY KEY AUTOINCREMENT, transfer_id INTEGER NOT NULL REFERENCES transfers(id) ON DELETE CASCADE, product_id INTEGER NOT NULL, qtd REAL NOT NULL);
+  CREATE TABLE IF NOT EXISTS sale_payments(id INTEGER PRIMARY KEY AUTOINCREMENT, sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE, method TEXT NOT NULL, amount REAL NOT NULL, created_at TEXT DEFAULT (datetime('now','localtime')));
 `;
 
 // ================= SQLite (fallback local) =================
@@ -173,6 +217,9 @@ async function initMaster() {
   try {
     const ccols = m.prepare('SELECT * FROM companies LIMIT 0').columns().map(c => c.name);
     if (!ccols.includes('logo')) m.exec('ALTER TABLE companies ADD COLUMN logo TEXT');
+    for (const [col, def] of [['person_type', "TEXT DEFAULT 'PJ'"], ['doc', 'TEXT'], ['ie', 'TEXT'], ['im', 'TEXT'], ['cep', 'TEXT'], ['street', 'TEXT'], ['number', 'TEXT'], ['district', 'TEXT'], ['city', 'TEXT'], ['uf', 'TEXT'], ['pix_key', 'TEXT'], ['pix_key_type', 'TEXT'], ['pix_name', 'TEXT'], ['pix_city', 'TEXT'], ['bank_name', 'TEXT'], ['bank_agency', 'TEXT'], ['bank_account', 'TEXT'], ['holder_type', "TEXT DEFAULT 'PJ'"], ['tax_regime', "TEXT DEFAULT 'simples'"], ['icms_default', 'REAL DEFAULT 0'], ['pis_default', 'REAL DEFAULT 0'], ['cofins_default', 'REAL DEFAULT 0'], ['printer_coupon', 'TEXT'], ['printer_nfe', 'TEXT'], ['paper_width', "TEXT DEFAULT '80mm'"], ['receipt_footer', 'TEXT'], ['reorder_mode', "TEXT DEFAULT 'min'"]]) {
+      if (!ccols.includes(col)) { try { m.exec(`ALTER TABLE companies ADD COLUMN ${col} ${def}`); } catch {} }
+    }
   } catch {}
 }
 
@@ -195,6 +242,21 @@ async function getTenantDb(companyId) {
   try {
     const cols = tdb.prepare('SELECT * FROM company_info LIMIT 0').columns().map(c => c.name);
     if (!cols.includes('logo')) tdb.exec('ALTER TABLE company_info ADD COLUMN logo TEXT');
+  } catch {}
+  try { // fiscal/pagamentos/filiais/NF em tenants antigos
+    const pc = tdb.prepare('SELECT * FROM products LIMIT 0').columns().map(c => c.name);
+    if (!pc.includes('ncm')) tdb.exec('ALTER TABLE products ADD COLUMN ncm TEXT');
+    if (!pc.includes('cest')) tdb.exec('ALTER TABLE products ADD COLUMN cest TEXT');
+    if (!pc.includes('tax_rate')) tdb.exec('ALTER TABLE products ADD COLUMN tax_rate REAL DEFAULT 0');
+    const sc = tdb.prepare('SELECT * FROM sales LIMIT 0').columns().map(c => c.name);
+    if (!sc.includes('caixa_id')) tdb.exec('ALTER TABLE sales ADD COLUMN caixa_id INTEGER');
+    if (!sc.includes('operator_name')) tdb.exec('ALTER TABLE sales ADD COLUMN operator_name TEXT');
+    const puc = tdb.prepare('SELECT * FROM purchases LIMIT 0').columns().map(c => c.name);
+    if (!puc.includes('nf_number')) tdb.exec('ALTER TABLE purchases ADD COLUMN nf_number TEXT');
+    if (!puc.includes('nf_key')) tdb.exec('ALTER TABLE purchases ADD COLUMN nf_key TEXT');
+    const cc = tdb.prepare('SELECT * FROM cash_registers LIMIT 0').columns().map(c => c.name);
+    if (!cc.includes('operator_name')) tdb.exec('ALTER TABLE cash_registers ADD COLUMN operator_name TEXT');
+    if (!cc.includes('terminal')) tdb.exec('ALTER TABLE cash_registers ADD COLUMN terminal TEXT');
   } catch {}
   const h = { pg: false, db: tdb };
   liteTenants.set(companyId, h);

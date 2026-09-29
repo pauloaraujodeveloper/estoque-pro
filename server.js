@@ -11,6 +11,20 @@ const { hashPass, checkPass, sign, authRequired, requireRole, requireSuperadmin,
 const { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara } = require('./src/utils');
 const { sendMail, welcomeHtml, tempPassHtml, mailConfigured } = require('./src/mailer');
 const crypto = require('crypto');
+const { buildBRCode } = require('./src/pix');
+const QRCode = require('qrcode');
+
+const PAY_METHODS = { dinheiro: 'Dinheiro', pix: 'Pix', cartao_credito: 'Cartão de crédito', cartao_debito: 'Cartão de débito', fiado: 'Fiado', cartao: 'Cartão' };
+function payLabel(m) { return PAY_METHODS[m] || m; }
+// cadastros padrão de um tenant novo (unidades + categorias de exemplo)
+async function seedDefaults(tdb) {
+  for (const s of ['UN', 'KG', 'G', 'L', 'ML', 'CX', 'PCT']) {
+    try { await trun(tdb, 'INSERT OR IGNORE INTO units(sigla,nome) VALUES(?,?)', s, s); } catch {}
+  }
+  for (const n of ['Alimentos', 'Bebidas', 'Beleza', 'Limpeza', 'Geral', 'Outros']) {
+    try { await trun(tdb, 'INSERT OR IGNORE INTO categories(nome) VALUES(?)', n); } catch {}
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -109,9 +123,7 @@ app.post('/api/auth/signup-company', ah(async (req, res) => {
   const company_id = Number(c.lastInsertRowid);
   const tdb = await getTenantDb(company_id);
   await trun(tdb, 'INSERT OR IGNORE INTO company_info(id,nome,segmento) VALUES(1,?,?)', company_nome, segmento || 'mercado');
-  for (const s of ['UN', 'KG', 'G', 'L', 'ML', 'CX', 'PCT']) {
-    try { await trun(tdb, 'INSERT OR IGNORE INTO units(sigla,nome) VALUES(?,?)', s, s); } catch {}
-  }
+  await seedDefaults(tdb);
   const u = await mrun('INSERT INTO users(company_id,name,email,pass_hash,role) VALUES(?,?,?,?,?)', company_id, user_name, String(email).toLowerCase(), await hashPass(password), 'admin');
   const user = { id: Number(u.lastInsertRowid), company_id, role: 'admin', name: user_name, email: String(email).toLowerCase() };
   try { await sendMail({ to: user.email, subject: 'Bem-vindo ao EstoquePro', html: welcomeHtml(company_nome, user_name) }); } catch {}
@@ -168,6 +180,7 @@ app.post('/api/saas/companies', authRequired, requireSuperadmin, ah(async (req, 
   const cid = Number(c.lastInsertRowid);
   const tdb = await getTenantDb(cid);
   await trun(tdb, 'INSERT OR IGNORE INTO company_info(id,nome,segmento) VALUES(1,?,?)', nome, segmento || 'mercado');
+  await seedDefaults(tdb);
   await mrun('INSERT INTO users(company_id,name,email,pass_hash,role) VALUES(?,?,?,?,?)', cid, admin_name || 'Admin', String(admin_email).toLowerCase(), await hashPass(admin_pass), 'admin');
   res.status(201).json({ id: cid });
 }));
@@ -198,10 +211,20 @@ app.get('/api/company', authRequired, ah(async (req, res) => {
 app.put('/api/company', authRequired, requireRole('admin'), ah(async (req, res) => {
   const b = req.body || {};
   const c = await mget('SELECT * FROM companies WHERE id=?', req.user.company_id);
+  if (!c) return res.status(404).json({ error: 'Empresa não encontrada.' });
   let logoVal;
   try { logoVal = b.logo === undefined ? (c?.logo || null) : validLogo(b.logo); } catch (e) { return res.status(400).json({ error: e.message }); }
-  await mrun('UPDATE companies SET nome=?, cnpj=?, endereco=?, telefone=?, email=?, segmento=?, margem_minima=?, logo=? WHERE id=?',
-    b.nome, b.cnpj, b.endereco, b.telefone, b.email, b.segmento, b.margem_minima ?? 20, logoVal, req.user.company_id);
+  const v = (k, dflt) => (b[k] === undefined ? (c[k] ?? dflt) : b[k]);
+  await mrun(`UPDATE companies SET nome=?, cnpj=?, endereco=?, telefone=?, email=?, segmento=?, margem_minima=?, logo=?,
+    person_type=?, doc=?, ie=?, im=?, cep=?, street=?, number=?, district=?, city=?, uf=?,
+    pix_key=?, pix_key_type=?, pix_name=?, pix_city=?, bank_name=?, bank_agency=?, bank_account=?, holder_type=?,
+    tax_regime=?, icms_default=?, pis_default=?, cofins_default=?, printer_coupon=?, printer_nfe=?, paper_width=?, receipt_footer=?, reorder_mode=? WHERE id=?`,
+    v('nome', ''), v('cnpj', ''), v('endereco', ''), v('telefone', ''), v('email', ''), v('segmento', 'mercado'), b.margem_minima ?? c.margem_minima ?? 20, logoVal,
+    v('person_type', 'PJ'), v('doc', ''), v('ie', ''), v('im', ''), v('cep', ''), v('street', ''), v('number', ''), v('district', ''), v('city', ''), v('uf', ''),
+    v('pix_key', ''), v('pix_key_type', ''), v('pix_name', ''), v('pix_city', ''), v('bank_name', ''), v('bank_agency', ''), v('bank_account', ''), v('holder_type', 'PJ'),
+    v('tax_regime', 'simples'), Number(b.icms_default ?? c.icms_default ?? 0), Number(b.pis_default ?? c.pis_default ?? 0), Number(b.cofins_default ?? c.cofins_default ?? 0),
+    v('printer_coupon', ''), v('printer_nfe', ''), v('paper_width', '80mm'), v('receipt_footer', ''), v('reorder_mode', 'min'),
+    req.user.company_id);
   try { await trun(T(req), 'UPDATE company_info SET nome=?, segmento=?, margem_minima=?, logo=? WHERE id=1', b.nome, b.segmento, b.margem_minima ?? 20, logoVal); } catch {}
   auditTdb(T(req), req.user, 'editar empresa', 'config', 'empresa', null, { ...b, logo: logoVal ? '[logo]' : null }, req.ip);
   res.json({ ok: true });
@@ -273,10 +296,11 @@ app.get('/api/products/:id', authRequired, ah(async (req, res) => {
 app.post('/api/products', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   const b = req.body || {};
   if (!b.nome) return res.status(400).json({ error: 'Nome é obrigatório.' });
-  const r = await trun(T(req), `INSERT INTO products(nome,codigo_interno,codigo_barras,sku,categoria_id,marca,unidade_id,tipo,custo_medio,preco_venda,estoque_atual,estoque_min,estoque_max,ponto_reposicao,localizacao,status,margem_min,perecivel) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  const r = await trun(T(req), `INSERT INTO products(nome,codigo_interno,codigo_barras,sku,categoria_id,marca,unidade_id,tipo,custo_medio,preco_venda,estoque_atual,estoque_min,estoque_max,ponto_reposicao,localizacao,status,margem_min,perecivel,ncm,cest,tax_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     b.nome, b.codigo_interno || null, b.codigo_barras || null, b.sku || null, b.categoria_id || null, b.marca || null, b.unidade_id || null,
     b.tipo || 'revenda', b.custo_medio || 0, b.preco_venda || 0, b.estoque_atual || 0, b.estoque_min || 0, b.estoque_max || 0,
-    b.ponto_reposicao || 0, b.localizacao || null, b.status || 'ativo', b.margem_min ?? 20, b.perecivel ? 1 : 0);
+    b.ponto_reposicao || 0, b.localizacao || null, b.status || 'ativo', b.margem_min ?? 20, b.perecivel ? 1 : 0,
+    b.ncm || null, b.cest || null, Number(b.tax_rate || 0));
   const id = Number(r.lastInsertRowid);
   if (b.estoque_atual > 0) await trun(T(req), 'INSERT INTO stock_movements(product_id,tipo,motivo,qtd,custo_unit,estoque_antes,estoque_depois,user_id,user_name) VALUES(?,?,?,?,?,?,?,?,?)', id, 'entrada', 'estoque inicial', b.estoque_atual, b.custo_medio || 0, 0, b.estoque_atual, req.user.id, req.user.name);
   auditTdb(T(req), req.user, 'criar produto', 'produtos', b.nome, null, b, req.ip);
@@ -287,11 +311,12 @@ app.put('/api/products/:id', authRequired, requireRole('admin', 'gerente'), ah(a
   const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', req.params.id);
   if (!p) return res.status(404).json({ error: 'Produto não encontrado.' });
   const b = req.body || {};
-  await trun(tdb, `UPDATE products SET nome=?,codigo_interno=?,codigo_barras=?,sku=?,categoria_id=?,marca=?,unidade_id=?,tipo=?,custo_medio=?,preco_venda=?,estoque_min=?,estoque_max=?,ponto_reposicao=?,localizacao=?,status=?,margem_min=?,perecivel=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+  await trun(tdb, `UPDATE products SET nome=?,codigo_interno=?,codigo_barras=?,sku=?,categoria_id=?,marca=?,unidade_id=?,tipo=?,custo_medio=?,preco_venda=?,estoque_min=?,estoque_max=?,ponto_reposicao=?,localizacao=?,status=?,margem_min=?,perecivel=?,ncm=?,cest=?,tax_rate=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
     b.nome ?? p.nome, b.codigo_interno ?? p.codigo_interno, b.codigo_barras ?? p.codigo_barras, b.sku ?? p.sku, b.categoria_id ?? p.categoria_id,
     b.marca ?? p.marca, b.unidade_id ?? p.unidade_id, b.tipo ?? p.tipo, b.custo_medio ?? p.custo_medio, b.preco_venda ?? p.preco_venda,
     b.estoque_min ?? p.estoque_min, b.estoque_max ?? p.estoque_max, b.ponto_reposicao ?? p.ponto_reposicao, b.localizacao ?? p.localizacao,
-    b.status ?? p.status, b.margem_min ?? p.margem_min, b.perecivel !== undefined ? (b.perecivel ? 1 : 0) : p.perecivel, p.id);
+    b.status ?? p.status, b.margem_min ?? p.margem_min, b.perecivel !== undefined ? (b.perecivel ? 1 : 0) : p.perecivel,
+    b.ncm ?? p.ncm ?? null, b.cest ?? p.cest ?? null, Number(b.tax_rate ?? p.tax_rate ?? 0), p.id);
   auditTdb(tdb, req.user, (b.preco_venda ?? p.preco_venda) !== p.preco_venda ? 'alterar preco' : 'editar produto', 'produtos', p.nome, { preco: p.preco_venda }, { preco: b.preco_venda ?? p.preco_venda }, req.ip);
   res.json({ ok: true });
 }));
@@ -396,25 +421,103 @@ app.post('/api/purchases', authRequired, requireRole('admin', 'gerente'), ah(asy
   auditTdb(tdb, req.user, 'criar compra', 'compras', `pedido #${pid}`, null, { total }, req.ip);
   res.status(201).json({ id: pid });
 }));
+app.get('/api/purchases/:id', authRequired, ah(async (req, res) => {
+  const tdb = T(req);
+  const pur = await tget(tdb, 'SELECT pu.*, s.fantasia as fornecedor FROM purchases pu LEFT JOIN suppliers s ON s.id=pu.supplier_id WHERE pu.id=?', req.params.id);
+  if (!pur) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  pur.itens = await tq(tdb, 'SELECT pi.*, p.nome as produto, p.estoque_atual FROM purchase_items pi JOIN products p ON p.id=pi.product_id WHERE pi.purchase_id=?', pur.id);
+  res.json(pur);
+}));
+// Recebimento: informe o nº do pedido, confira e EDITE as quantidades recebidas (+ NF). Suporta parcial.
 app.post('/api/purchases/:id/receive', authRequired, requireRole('admin', 'gerente', 'estoquista'), ah(async (req, res) => {
   const tdb = T(req);
   const pur = await tget(tdb, 'SELECT * FROM purchases WHERE id=?', req.params.id);
   if (!pur) return res.status(404).json({ error: 'Pedido não encontrado.' });
-  const items = await tq(tdb, 'SELECT * FROM purchase_items WHERE purchase_id=?', pur.id);
-  for (const it of items) {
-    const aReceber = Number(it.qtd) - Number(it.qtd_recebida);
-    if (aReceber <= 0) continue;
-    const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', it.product_id);
-    const novo = custoMedioPonderado(Number(p.estoque_atual), Number(p.custo_medio), aReceber, Number(it.custo_unit));
-    await trun(tdb, 'UPDATE products SET custo_medio=?, estoque_atual=estoque_atual+? WHERE id=?', novo, aReceber, it.product_id);
-    await trun(tdb, 'INSERT INTO stock_movements(product_id,tipo,motivo,qtd,custo_unit,estoque_antes,estoque_depois,user_id,user_name,doc_ref) VALUES(?,?,?,?,?,?,?,?,?,?)',
-      it.product_id, 'compra', `pedido #${pur.id}`, aReceber, it.custo_unit, p.estoque_atual, Number(p.estoque_atual) + aReceber, req.user.id, req.user.name, `pedido #${pur.id}`);
-    await trun(tdb, 'UPDATE purchase_items SET qtd_recebida=qtd WHERE id=?', it.id);
+  if (pur.status === 'recebido') return res.status(400).json({ error: 'Pedido já totalmente recebido.' });
+  const { items, nf_number, nf_key } = req.body || {};
+  const all = await tq(tdb, 'SELECT * FROM purchase_items WHERE purchase_id=?', pur.id);
+  const recvMap = {};
+  if (Array.isArray(items)) {
+    for (const it of items) recvMap[it.product_id] = Number(it.qtd || 0);
   }
-  await trun(tdb, 'UPDATE purchases SET status=?, recebido_at=CURRENT_TIMESTAMP WHERE id=?', 'recebido', pur.id);
-  await trun(tdb, 'INSERT INTO accounts_payable(descricao,supplier_id,valor,vencimento,status) VALUES(?,?,?,?,?)', `Compra pedido #${pur.id}`, pur.supplier_id, pur.total, new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), 'aberto');
-  auditTdb(tdb, req.user, 'receber compra', 'compras', `pedido #${pur.id}`, null, null, req.ip);
+  let recvTotal = 0;
+  for (const it of all) {
+    const remaining = Number(it.qtd) - Number(it.qtd_recebida);
+    if (remaining <= 0) continue;
+    let recv = recvMap[it.product_id] !== undefined ? recvMap[it.product_id] : remaining;
+    if (recv < 0 || recv > remaining) return res.status(400).json({ error: `Quantidade inválida para o item (restam ${remaining}).` });
+    if (recv === 0) continue;
+    const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', it.product_id);
+    const novo = custoMedioPonderado(Number(p.estoque_atual), Number(p.custo_medio), recv, Number(it.custo_unit));
+    await trun(tdb, 'UPDATE products SET custo_medio=?, estoque_atual=estoque_atual+? WHERE id=?', novo, recv, it.product_id);
+    await trun(tdb, 'INSERT INTO stock_movements(product_id,tipo,motivo,qtd,custo_unit,estoque_antes,estoque_depois,user_id,user_name,doc_ref) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      it.product_id, 'compra', `pedido #${pur.id}`, recv, it.custo_unit, p.estoque_atual, Number(p.estoque_atual) + recv, req.user.id, req.user.name, `pedido #${pur.id}`);
+    await trun(tdb, 'UPDATE purchase_items SET qtd_recebida=qtd_recebida+? WHERE id=?', recv, it.id);
+    recvTotal += recv * Number(it.custo_unit);
+  }
+  if (recvTotal <= 0) return res.status(400).json({ error: 'Nada a receber. Confira as quantidades.' });
+  if (nf_number || nf_key) await trun(tdb, 'UPDATE purchases SET nf_number=?, nf_key=? WHERE id=?', nf_number || pur.nf_number, nf_key || pur.nf_key, pur.id);
+  const left = await tget(tdb, 'SELECT COALESCE(SUM(qtd-qtd_recebida),0) r FROM purchase_items WHERE purchase_id=?', pur.id);
+  const done = Number(left?.r || 0) <= 0.0001;
+  await trun(tdb, 'UPDATE purchases SET status=?, recebido_at=CURRENT_TIMESTAMP WHERE id=?', done ? 'recebido' : 'parcial', pur.id);
+  await trun(tdb, 'INSERT INTO accounts_payable(descricao,supplier_id,valor,vencimento,status) VALUES(?,?,?,?,?)', `Compra pedido #${pur.id} (recebimento)`, pur.supplier_id, Number(recvTotal.toFixed(2)), new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), 'aberto');
+  auditTdb(tdb, req.user, 'receber compra', 'compras', `pedido #${pur.id}`, null, { recebido: recvTotal, nf: nf_number }, req.ip);
+  res.json({ ok: true, recebido: Number(recvTotal.toFixed(2)), status: done ? 'recebido' : 'parcial' });
+}));
+
+// Solicitações de compra: sugere conforme regra (estoque mín ou ponto de reposição)
+app.get('/api/purchase-suggestions', authRequired, ah(async (req, res) => {
+  const cid = req.user.company_id;
+  if (!cid) return res.status(400).json({ error: 'Sem empresa no contexto.' });
+  const comp = await mget('SELECT reorder_mode FROM companies WHERE id=?', cid);
+  const mode = comp?.reorder_mode || 'min';
+  const prods = await tq(T(req), `SELECT p.*, c.nome as categoria FROM products p LEFT JOIN categories c ON c.id=p.categoria_id WHERE p.status='ativo' AND p.tipo!='servico' ORDER BY p.nome`);
+  const out = [];
+  for (const p of prods) {
+    const th = mode === 'reorder' ? (Number(p.ponto_reposicao) || Number(p.estoque_min)) : Number(p.estoque_min);
+    if (Number(p.estoque_atual) <= th) {
+      const ideal = Number(p.estoque_max) || th * 2;
+      out.push({ product_id: p.id, nome: p.nome, categoria: p.categoria, estoque_atual: Number(p.estoque_atual), minimo: th, sugerido: Math.max(0, Number((ideal - Number(p.estoque_atual)).toFixed(2))), custo_medio: Number(p.custo_medio) });
+    }
+  }
+  res.json({ mode, data: out });
+}));
+
+// ============ FILIAIS / TRANSFERÊNCIAS ============
+app.get('/api/branches', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT * FROM branches ORDER BY nome'))));
+app.post('/api/branches', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
+  const b = req.body || {};
+  if (!b.nome) return res.status(400).json({ error: 'Nome da filial/loja obrigatório.' });
+  const r = await trun(T(req), 'INSERT INTO branches(nome,cnpj,endereco,active) VALUES(?,?,?,?)', b.nome, b.cnpj || null, b.endereco || null, b.active === undefined ? 1 : (b.active ? 1 : 0));
+  res.status(201).json({ id: Number(r.lastInsertRowid) });
+}));
+app.put('/api/branches/:id', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
+  const b = req.body || {};
+  await trun(T(req), 'UPDATE branches SET nome=?, cnpj=?, endereco=?, active=? WHERE id=?', b.nome, b.cnpj || null, b.endereco || null, b.active ? 1 : 0, req.params.id);
   res.json({ ok: true });
+}));
+app.get('/api/transfers', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT t.*, f.nome as origem, d.nome as destino FROM transfers t LEFT JOIN branches f ON f.id=t.from_branch_id LEFT JOIN branches d ON d.id=t.to_branch_id ORDER BY t.id DESC LIMIT 100'))));
+app.post('/api/transfers', authRequired, requireRole('admin', 'gerente', 'estoquista'), ah(async (req, res) => {
+  const tdb = T(req);
+  const { from_branch_id, to_branch_id, items, notes } = req.body || {};
+  if (!from_branch_id || !to_branch_id || from_branch_id === to_branch_id) return res.status(400).json({ error: 'Origem e destino devem ser filiais diferentes.' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Informe os itens.' });
+  const fo = await tget(tdb, 'SELECT * FROM branches WHERE id=?', from_branch_id);
+  const dt = await tget(tdb, 'SELECT * FROM branches WHERE id=?', to_branch_id);
+  if (!fo || !dt) return res.status(400).json({ error: 'Filial inexistente.' });
+  for (const it of items) {
+    const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', it.product_id);
+    if (!p || Number(p.estoque_atual) < Number(it.qtd)) return res.status(400).json({ error: `Estoque insuficiente: ${p?.nome || 'item'}` });
+  }
+  const r = await trun(tdb, 'INSERT INTO transfers(from_branch_id,to_branch_id,status,notes,user_id,user_name) VALUES(?,?,?,?,?,?)', from_branch_id, to_branch_id, 'concluida', notes || null, req.user.id, req.user.name);
+  const tid = Number(r.lastInsertRowid);
+  for (const it of items) {
+    await trun(tdb, 'INSERT INTO transfer_items(transfer_id,product_id,qtd) VALUES(?,?,?)', tid, it.product_id, it.qtd);
+    await movimentar(tdb, { product_id: it.product_id, tipo: 'saida', motivo: `transferência #${tid} ${fo.nome} → ${dt.nome}`, qtd: Math.abs(it.qtd), user: req.user, doc_ref: `transferencia #${tid}` });
+    await movimentar(tdb, { product_id: it.product_id, tipo: 'entrada', motivo: `transferência #${tid} recebida em ${dt.nome}`, qtd: Math.abs(it.qtd), user: req.user, doc_ref: `transferencia #${tid}` });
+  }
+  auditTdb(tdb, req.user, 'transferencia', 'estoque', `transferencia #${tid}`, null, { de: fo.nome, para: dt.nome }, req.ip);
+  res.status(201).json({ id: tid });
 }));
 
 // ============ FICHA TÉCNICA ============
@@ -441,10 +544,56 @@ app.post('/api/recipes', authRequired, requireRole('admin', 'gerente'), ah(async
 }));
 
 // ============ VENDAS / PDV ============
-app.get('/api/sales', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT s.*, c.nome as cliente FROM sales s LEFT JOIN customers c ON c.id=s.customer_id ORDER BY s.id DESC LIMIT 100'))));
+app.get('/api/sales', authRequired, ah(async (req, res) => {
+  const tdb = T(req);
+  const rows = await tq(tdb, 'SELECT s.*, c.nome as cliente FROM sales s LEFT JOIN customers c ON c.id=s.customer_id ORDER BY s.id DESC LIMIT 100');
+  if (rows.length) {
+    const ids = rows.map(s => s.id);
+    const inQ = ids.map(() => '?').join(',');
+    const pays = await tq(tdb, `SELECT sale_id, method, amount FROM sale_payments WHERE sale_id IN (${inQ})`, ...ids);
+    const its = await tq(tdb, `SELECT si.sale_id, si.qtd, si.preco_unit, p.nome FROM sale_items si JOIN products p ON p.id=si.product_id WHERE si.sale_id IN (${inQ})`, ...ids);
+    const payMap = {}, itMap = {};
+    pays.forEach(p => { (payMap[p.sale_id] = payMap[p.sale_id] || []).push({ method: p.method, label: payLabel(p.method), amount: Number(p.amount) }); });
+    its.forEach(i => { (itMap[i.sale_id] = itMap[i.sale_id] || []).push(i); });
+    rows.forEach(s => {
+      s.payments = payMap[s.id] || (s.pagamento ? [{ method: s.pagamento, label: payLabel(s.pagamento), amount: Number(s.total) }] : []);
+      s.itens = itMap[s.id] || [];
+    });
+  }
+  res.json(rows);
+}));
+app.get('/api/sales/:id', authRequired, ah(async (req, res) => {
+  const tdb = T(req);
+  const s = await tget(tdb, 'SELECT s.*, c.nome as cliente FROM sales s LEFT JOIN customers c ON c.id=s.customer_id WHERE s.id=?', req.params.id);
+  if (!s) return res.status(404).json({ error: 'Venda não encontrada.' });
+  s.payments = await tq(tdb, 'SELECT method, amount FROM sale_payments WHERE sale_id=?', s.id);
+  s.itens = await tq(tdb, 'SELECT si.*, p.nome FROM sale_items si JOIN products p ON p.id=si.product_id WHERE si.sale_id=?', s.id);
+  res.json(s);
+}));
+// conclui venda aguardando pagamento (baixa contas a receber vinculadas)
+app.post('/api/sales/:id/receber', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
+  const tdb = T(req);
+  const s = await tget(tdb, 'SELECT * FROM sales WHERE id=?', req.params.id);
+  if (!s) return res.status(404).json({ error: 'Venda não encontrada.' });
+  await trun(tdb, "UPDATE accounts_receivable SET status='recebido', pago_em=CURRENT_TIMESTAMP WHERE sale_id=? AND status='aberto'", s.id);
+  await trun(tdb, "UPDATE sales SET status='finalizada' WHERE id=?", s.id);
+  auditTdb(tdb, req.user, 'receber venda', 'vendas', `venda #${s.id}`, { status: s.status }, { status: 'finalizada' }, req.ip);
+  res.json({ ok: true });
+}));
+// PIX: gera BR Code + QR a partir da chave cadastrada na empresa
+app.post('/api/sales/:id/pix', authRequired, ah(async (req, res) => {
+  const tdb = T(req);
+  const s = await tget(tdb, 'SELECT * FROM sales WHERE id=?', req.params.id);
+  if (!s) return res.status(404).json({ error: 'Venda não encontrada.' });
+  const co = await mget('SELECT * FROM companies WHERE id=?', req.user.company_id);
+  if (!co || !co.pix_key) return res.status(400).json({ error: 'Cadastre a chave PIX em Empresa → Pagamentos.' });
+  const brcode = buildBRCode({ key: co.pix_key, name: co.pix_name || co.nome, city: co.pix_city || co.city, amount: s.total, txid: 'VENDA' + s.id });
+  const qr = await QRCode.toDataURL(brcode, { width: 300, margin: 1 });
+  res.json({ brcode, qr });
+}));
 app.post('/api/sales', authRequired, ah(async (req, res) => {
   const tdb = T(req);
-  const { customer_id, items, desconto = 0, pagamento = 'dinheiro' } = req.body || {};
+  const { customer_id, items, desconto = 0, pagamento = 'dinheiro', payments, caixa_id, operator_name, awaiting } = req.body || {};
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Carrinho vazio.' });
   let total = 0;
   for (const it of items) {
@@ -454,7 +603,27 @@ app.post('/api/sales', authRequired, ah(async (req, res) => {
     total += Number(it.qtd) * Number(it.preco_unit ?? p.preco_venda);
   }
   total = Number((total - Number(desconto || 0)).toFixed(2));
-  const r = await trun(tdb, 'INSERT INTO sales(customer_id,user_id,user_name,total,desconto,pagamento) VALUES(?,?,?,?,?,?)', customer_id || null, req.user.id, req.user.name, total, desconto, pagamento);
+  const METHODS = ['dinheiro', 'pix', 'cartao_credito', 'cartao_debito', 'fiado'];
+  let pays = Array.isArray(payments) && payments.length
+    ? payments.map(p => ({ method: p.method, amount: Number(p.amount) }))
+    : [{ method: pagamento, amount: total }];
+  for (const p of pays) {
+    if (!METHODS.includes(p.method)) return res.status(400).json({ error: 'Forma de pagamento inválida: ' + p.method });
+    if (!(p.amount > 0)) return res.status(400).json({ error: 'Valores de pagamento inválidos.' });
+  }
+  const paidSum = Number(pays.reduce((s, p) => s + p.amount, 0).toFixed(2));
+  if (Math.abs(paidSum - total) > 0.02) return res.status(400).json({ error: `Pagamentos somam R$ ${paidSum.toFixed(2)} mas o total é R$ ${total.toFixed(2)}.` });
+  const fiadoAmt = Number(pays.filter(p => p.method === 'fiado').reduce((s, p) => s + p.amount, 0).toFixed(2));
+  if (fiadoAmt > 0 && !customer_id) return res.status(400).json({ error: 'Venda fiada exige cliente.' });
+  const status = (awaiting || fiadoAmt > 0) ? 'aguardando_pagamento' : 'finalizada';
+  const pagtoLabel = pays.length > 1 ? 'multi' : pays[0].method;
+  let caixaId = caixa_id || null;
+  if (caixaId) {
+    const cx = await tget(tdb, 'SELECT * FROM cash_registers WHERE id=?', caixaId);
+    if (!cx) return res.status(400).json({ error: 'Caixa inexistente.' });
+    if (cx.status !== 'aberto') return res.status(400).json({ error: 'Caixa fechado. Abra o caixa para vender.' });
+  }
+  const r = await trun(tdb, 'INSERT INTO sales(customer_id,user_id,user_name,total,desconto,pagamento,status,caixa_id,operator_name) VALUES(?,?,?,?,?,?,?,?,?)', customer_id || null, req.user.id, req.user.name, total, desconto, pagtoLabel, status, caixaId, operator_name || req.user.name);
   const sid = Number(r.lastInsertRowid);
   for (const it of items) {
     const p = await tget(tdb, 'SELECT * FROM products WHERE id=?', it.product_id);
@@ -474,9 +643,11 @@ app.post('/api/sales', authRequired, ah(async (req, res) => {
       await movimentar(tdb, { product_id: p.id, tipo: 'venda', motivo: `venda #${sid}`, qtd: Math.abs(it.qtd), user: req.user, doc_ref: `venda #${sid}` });
     }
   }
-  if (pagamento === 'fiado') await trun(tdb, 'INSERT INTO accounts_receivable(descricao,customer_id,sale_id,valor,vencimento) VALUES(?,?,?,?,?)', `Venda #${sid} fiado`, customer_id || null, sid, total, new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));
-  auditTdb(tdb, req.user, 'criar venda', 'vendas', `venda #${sid}`, null, { total, pagamento }, req.ip);
-  res.status(201).json({ id: sid, total });
+  for (const p of pays) await trun(tdb, 'INSERT INTO sale_payments(sale_id,method,amount) VALUES(?,?,?)', sid, p.method, p.amount);
+  const recvAmt = (awaiting && fiadoAmt === 0) ? total : fiadoAmt;
+  if (recvAmt > 0) await trun(tdb, 'INSERT INTO accounts_receivable(descricao,customer_id,sale_id,valor,vencimento) VALUES(?,?,?,?,?)', `Venda #${sid} (${recvAmt === total ? 'aguardando pagamento' : 'parte fiado'})`, customer_id || null, sid, recvAmt, new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));
+  auditTdb(tdb, req.user, 'criar venda', 'vendas', `venda #${sid}`, null, { total, pagamentos: pays, status }, req.ip);
+  res.status(201).json({ id: sid, total, status });
 }));
 app.post('/api/sales/:id/cancel', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   const tdb = T(req);
@@ -485,6 +656,7 @@ app.post('/api/sales/:id/cancel', authRequired, requireRole('admin', 'gerente'),
   const items = await tq(tdb, 'SELECT * FROM sale_items WHERE sale_id=?', s.id);
   for (const it of items) await movimentar(tdb, { product_id: it.product_id, tipo: 'entrada', motivo: `cancelamento venda #${s.id}`, qtd: Math.abs(it.qtd), user: req.user, doc_ref: `cancel #${s.id}` });
   await trun(tdb, 'UPDATE sales SET status=? WHERE id=?', 'cancelada', s.id);
+  await trun(tdb, "UPDATE accounts_receivable SET status='cancelado' WHERE sale_id=? AND status='aberto'", s.id);
   auditTdb(tdb, req.user, 'cancelar venda', 'vendas', `venda #${s.id}`, null, null, req.ip);
   res.json({ ok: true });
 }));
@@ -516,6 +688,33 @@ app.post('/api/finance/receber', authRequired, requireRole('admin', 'gerente'), 
 app.post('/api/finance/receber/:id/baixar', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {
   await trun(T(req), 'UPDATE accounts_receivable SET status=?, pago_em=CURRENT_TIMESTAMP WHERE id=?', 'recebido', req.params.id);
   res.json({ ok: true });
+}));
+// ============ CAIXA (turnos por terminal/operador) ============
+app.get('/api/cash', authRequired, ah(async (req, res) => {
+  const rows = await tq(T(req), `SELECT c.*, u.name as aberto_por,
+    (SELECT COALESCE(SUM(s.total),0) FROM sales s WHERE s.caixa_id=c.id AND s.status!='cancelada') as total_vendido
+    FROM cash_registers c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.id DESC LIMIT 50`);
+  res.json(rows);
+}));
+app.post('/api/cash/open', authRequired, ah(async (req, res) => {
+  const { terminal, operator_name, saldo_inicial } = req.body || {};
+  if (!terminal) return res.status(400).json({ error: 'Informe o caixa (ex: 1).' });
+  const open = await tget(T(req), "SELECT * FROM cash_registers WHERE terminal=? AND status='aberto'", String(terminal));
+  if (open) return res.status(400).json({ error: `Caixa ${terminal} já está aberto (${open.operator_name || ''}).` });
+  const r = await trun(T(req), 'INSERT INTO cash_registers(user_id,terminal,operator_name,saldo_inicial,status) VALUES(?,?,?,?,?)', req.user.id, String(terminal), operator_name || req.user.name, Number(saldo_inicial || 0), 'aberto');
+  auditTdb(T(req), req.user, 'abrir caixa', 'financeiro', `caixa ${terminal}`, null, { operador: operator_name }, req.ip);
+  res.status(201).json({ id: Number(r.lastInsertRowid) });
+}));
+app.post('/api/cash/:id/close', authRequired, ah(async (req, res) => {
+  const tdb = T(req);
+  const cx = await tget(tdb, 'SELECT * FROM cash_registers WHERE id=?', req.params.id);
+  if (!cx || cx.status !== 'aberto') return res.status(400).json({ error: 'Caixa inexistente ou já fechado.' });
+  const byMethod = await tq(tdb, `SELECT sp.method, COALESCE(SUM(sp.amount),0) t FROM sale_payments sp JOIN sales s ON s.id=sp.sale_id WHERE s.caixa_id=? AND s.status!='cancelada' GROUP BY sp.method`, cx.id);
+  const vendido = byMethod.reduce((s, r) => s + Number(r.t), 0);
+  const { saldo_final } = req.body || {};
+  await trun(tdb, 'UPDATE cash_registers SET saldo_final=?, status=?, fechado_em=CURRENT_TIMESTAMP WHERE id=?', Number(saldo_final ?? (Number(cx.saldo_inicial) + vendido)), 'fechado', cx.id);
+  auditTdb(tdb, req.user, 'fechar caixa', 'financeiro', `caixa ${cx.terminal}`, { status: 'aberto' }, { status: 'fechado', vendido }, req.ip);
+  res.json({ ok: true, saldo_inicial: Number(cx.saldo_inicial), vendido, por_forma: byMethod });
 }));
 app.get('/api/finance/expenses', authRequired, ah(async (req, res) => res.json(await tq(T(req), 'SELECT * FROM expenses ORDER BY data DESC LIMIT 100'))));
 app.post('/api/finance/expenses', authRequired, requireRole('admin', 'gerente'), ah(async (req, res) => {

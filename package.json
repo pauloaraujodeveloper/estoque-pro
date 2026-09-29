@@ -17,6 +17,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.23.0",
+    "qrcode": "^1.5.4",
     "resend": "^6.30.0"
   },
   "engines": {

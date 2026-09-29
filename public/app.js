@@ -32,6 +32,31 @@ function csv(name, rows) {
   const out = [cols.join(';')].concat(rows.map(r => cols.map(c => JSON.stringify(r[c] ?? '')).join(';'))).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + out], { type: 'text/csv' })); a.download = name; a.click();
 }
+const PAYL = { dinheiro: 'Dinheiro', pix: 'Pix', cartao_credito: 'Crédito', cartao_debito: 'Débito', fiado: 'Fiado', cartao: 'Cartão', multi: 'Múltiplo' };
+function payLabel(m) { return PAYL[m] || m || '-'; }
+function statusLabel(s) { return { finalizada: 'Concluída', aguardando_pagamento: 'Aguardando pagto', cancelada: 'Cancelada', aberto: 'Aberto', recebido: 'Recebido', pago: 'Pago', parcial: 'Parcial' }[s] || s || '-'; }
+// Exporta .xls que abre no Excel (tabela HTML)
+function xls(name, rows) {
+  if (!rows || !rows.length) return toast('Nada para exportar');
+  const ks = Object.keys(rows[0]);
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table border="1"><tr>${ks.map(k => `<th>${k}</th>`).join('')}</tr>${rows.map(r => `<tr>${ks.map(k => `<td>${r[k] ?? ''}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' })); a.download = name.endsWith('.xls') ? name : name + '.xls'; a.click();
+}
+// Imprime cupom/relatório em janela de impressão (gera PDF pela impressora do sistema)
+function printHtml(title, bodyHtml) {
+  const w = window.open('', '_blank', 'width=420');
+  w.document.write(`<html><head><title>${title}</title><style>body{font-family:Arial,monospace;font-size:12px;max-width:320px;margin:0 auto;padding:8px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px dashed #999;padding:3px;text-align:left;font-size:12px}.c{text-align:center}.r{text-align:right}h2{font-size:15px;margin:4px 0}@media print{button{display:none}}</style></head><body>${bodyHtml}<br><div class="c"><button onclick="window.print()">🖨️ Imprimir / PDF</button></div></body></html>`);
+  w.document.close();
+}
+function receiptHtml(s, co) {
+  co = co || {};
+  return `<div class="c"><h2>${co.nome || 'CUPOM'}</h2><small>${[co.street, co.number, co.city, co.uf].filter(Boolean).join(' ')} ${co.telefone || ''}</small><br><small>${co.doc ? ((co.person_type === 'PF' ? 'CPF: ' : 'CNPJ: ') + co.doc) : ''}</small>${co.printer_coupon ? `<br><small>Imp: ${co.printer_coupon} · ${co.paper_width || ''}</small>` : ''}</div><hr>`
+    + `<small>Venda #${s.id} · ${s.created_at || ''}<br>Cliente: ${s.cliente || 'Balcão'} · Caixa: ${s.caixa_id || '-'} · Op: ${s.operator_name || s.user_name || ''}</small><hr>`
+    + `<table>${(s.itens || []).map(i => `<tr><td>${i.qtd}x ${i.nome}</td><td class="r">${BRL(Number(i.qtd) * Number(i.preco_unit))}</td></tr>`).join('')}</table><hr>`
+    + (Number(s.desconto) ? `Desconto: ${BRL(s.desconto)}<br>` : '')
+    + `<b>TOTAL: ${BRL(s.total)}</b><br><small>${(s.payments || []).map(p => `${payLabel(p.method)} ${BRL(p.amount)}`).join(' + ')}</small><br><small>Status: ${statusLabel(s.status)}</small><hr>`
+    + `<div class="c"><small>${co.receipt_footer || 'Obrigado pela preferência!'}</small></div>`;
+}
 
 // ---------- AUTH ----------
 $('#tab-login').onclick = () => { $('#tab-login').classList.add('active'); $('#tab-signup').classList.remove('active'); $('#form-login').classList.remove('hidden'); $('#form-signup').classList.add('hidden'); };
@@ -132,10 +157,10 @@ async function refreshBell() {
 
 const MENUS = {
   superadmin: [['SaaS', [['Painel SaaS', '#/saas', 'Gerenciar empresas clientes isoladas'], ['Usuários', '#/usuarios', 'Todos os usuários']]]],
-  admin: [['Principal', [['Dashboard', '#/dashboard', 'Visão geral'], ['Alertas', '#/alertas', 'Estoque baixo e vencimentos']]], ['Operação', [['PDV / Vendas', '#/pdv', 'Frente de caixa rápida'], ['Vendas', '#/vendas', 'Histórico'], ['Caixa / Financeiro', '#/financeiro', 'Contas e DRE']]], ['Estoque', [['Produtos', '#/produtos', 'Cadastro e preços'], ['Movimentações', '#/estoque', 'Entradas, saídas, perdas'], ['Lotes', '#/lotes', 'Validade e PVPS'], ['Compras', '#/compras', 'Pedidos e recebimentos']]], ['Cadastros', [['Clientes', '#/clientes', 'Fiado e histórico'], ['Fornecedores', '#/fornecedores', 'Histórico de preços'], ['Ficha técnica', '#/fichas', 'Receitas e consumo auto']]], ['Gestão', [['Relatórios', '#/relatorios', 'Exportar CSV'], ['Segmento', '#/segmento', 'Módulo do seu ramo'], ['Usuários', '#/usuarios', 'Equipe e perfis'], ['Empresa', '#/empresa', 'Dados e segmento'], ['Auditoria', '#/auditoria', 'Quem fez o quê']]]],
-  gerente: [['Principal', [['Dashboard', '#/dashboard', ''], ['PDV / Vendas', '#/pdv', ''], ['Produtos', '#/produtos', ''], ['Movimentações', '#/estoque', ''], ['Compras', '#/compras', ''], ['Clientes', '#/clientes', ''], ['Financeiro', '#/financeiro', ''], ['Relatórios', '#/relatorios', '']]]],
+  admin: [['Principal', [['Dashboard', '#/dashboard', 'Visão geral'], ['Alertas', '#/alertas', 'Estoque baixo e vencimentos']]], ['Operação', [['PDV / Vendas', '#/pdv', 'Frente de caixa rápida'], ['Vendas', '#/vendas', 'Histórico'], ['Caixa / Financeiro', '#/financeiro', 'Contas e DRE']]], ['Estoque', [['Produtos', '#/produtos', 'Cadastro e preços'], ['Movimentações', '#/estoque', 'Entradas, saídas, perdas'], ['Lotes', '#/lotes', 'Validade e PVPS'], ['Transferências', '#/transf', 'Entre filiais/lojas'], ['Compras', '#/compras', 'Pedidos e recebimentos']]], ['Cadastros', [['Clientes', '#/clientes', 'Fiado e histórico'], ['Fornecedores', '#/fornecedores', 'Histórico de preços'], ['Ficha técnica', '#/fichas', 'Receitas e consumo auto']]], ['Gestão', [['Relatórios', '#/relatorios', 'Exportar CSV'], ['Segmento', '#/segmento', 'Módulo do seu ramo'], ['Usuários', '#/usuarios', 'Equipe e perfis'], ['Empresa', '#/empresa', 'Dados e segmento'], ['Auditoria', '#/auditoria', 'Quem fez o quê']]]],
+  gerente: [['Principal', [['Dashboard', '#/dashboard', ''], ['PDV / Vendas', '#/pdv', ''], ['Produtos', '#/produtos', ''], ['Movimentações', '#/estoque', ''], ['Compras', '#/compras', ''], ['Transferências', '#/transf', ''], ['Clientes', '#/clientes', ''], ['Financeiro', '#/financeiro', ''], ['Relatórios', '#/relatorios', '']]]],
   vendedor: [['Vendas', [['PDV / Vendas', '#/pdv', 'Registrar venda'], ['Produtos', '#/produtos', 'Consultar'], ['Clientes', '#/clientes', 'Consultar']]]],
-  estoquista: [['Estoque', [['Dashboard', '#/dashboard', ''], ['Produtos', '#/produtos', ''], ['Movimentações', '#/estoque', 'Entradas e saídas'], ['Lotes', '#/lotes', ''], ['Compras', '#/compras', 'Receber']]]],
+  estoquista: [['Estoque', [['Dashboard', '#/dashboard', ''], ['Produtos', '#/produtos', ''], ['Movimentações', '#/estoque', 'Entradas e saídas'], ['Lotes', '#/lotes', ''], ['Transferências', '#/transf', ''], ['Compras', '#/compras', 'Receber']]]],
 };
 function buildMenu() {
   const m = ME.role === 'superadmin' ? (actingCid() ? MENUS.admin : MENUS.superadmin) : (MENUS[ME.role] || MENUS.admin);
@@ -158,6 +183,7 @@ async function route() {
     if (h === '#/fornecedores') return viewFornecedores(C);
     if (h === '#/fichas') return viewFichas(C);
     if (h === '#/lotes') return viewLotes(C);
+    if (h === '#/transf') return viewTransf(C);
     if (h === '#/financeiro') return viewFinanceiro(C);
     if (h === '#/relatorios') return viewRelatorios(C);
     if (h === '#/segmento') return viewSegmento(C);
@@ -201,7 +227,7 @@ async function viewProdutos(C) {
     <input id="q" placeholder="🔎 Buscar produto..." title="Busca por nome, código de barras ou SKU">
     <select id="f-cat" title="Filtrar por categoria"><option value="">Todas categorias</option>${cats.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
     <button class="btn sm ghost" id="btn-exp" title="Exportar lista em CSV">📊 CSV</button>
-    ${(ME.role === 'admin' || ME.role === 'gerente') ? '<button class="btn sm primary" id="btn-new" title="Cadastrar novo produto">+ Novo produto</button>' : ''}
+    ${(ME.role === 'admin' || ME.role === 'gerente') ? '<button class="btn sm ghost" id="btn-aux" title="Criar categorias e unidades">⚙ Cadastros</button><button class="btn sm primary" id="btn-new" title="Cadastrar novo produto">+ Novo produto</button>' : ''}
   </div>
   <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Produto</th><th>Estoque</th>${canCost ? '<th>Custo</th><th>Preço</th><th>Margem</th>' : '<th>Preço</th>'}<th></th></tr></thead><tbody id="tb"></tbody></table></div>
   <p class="muted" id="empty"></p>`;
@@ -222,6 +248,16 @@ async function viewProdutos(C) {
   $('#q').oninput = draw; $('#f-cat').onchange = draw;
   $('#btn-exp').onclick = () => csv('produtos.csv', data);
   const nb = $('#btn-new'); if (nb) nb.onclick = () => formProduto(null);
+  const ab = $('#btn-aux');
+  if (ab) ab.onclick = async () => {
+    const cats = await api.get('/api/categories'); const units = await api.get('/api/units');
+    modal(`<h3>⚙ Cadastros auxiliares</h3>
+    <div class="row"><div><h3>Categorias</h3>${cats.map(c => `<small>• ${c.nome}</small><br>`).join('')}<div class="row"><input id="nc-n" placeholder="Nova categoria"><button class="btn sm ok" id="nc-ok">+</button></div></div>
+    <div><h3>Unidades</h3>${units.map(u => `<small>• ${u.sigla} (${u.nome})</small><br>`).join('')}<div class="row"><input id="nu-s" placeholder="Sigla" style="max-width:80px"><button class="btn sm ok" id="nu-ok">+</button></div></div></div>
+    <br><button class="btn ghost" onclick="closeModal();route();">Concluir</button>`);
+    $('#nc-ok').onclick = async () => { try { await api.post('/api/categories', { nome: $('#nc-n').value }); toast('✓ Categoria criada!'); $('#nc-n').value = ''; } catch (e) { toast(e.message); } };
+    $('#nu-ok').onclick = async () => { try { await api.post('/api/units', { sigla: $('#nu-s').value }); toast('✓ Unidade criada!'); $('#nu-s').value = ''; } catch (e) { toast(e.message); } };
+  };
   draw();
 }
 async function verProduto(id) {
@@ -242,6 +278,7 @@ async function formProduto(id) {
   <label>Unidade<select id="f-un">${units.map(u => `<option value="${u.id}" ${p.unidade_id == u.id ? 'selected' : ''}>${u.sigla}</option>`).join('')}</select></label></div>
   <div class="row"><label>Estoque atual<input id="f-est" type="number" step="0.01" value="${p.estoque_atual || 0}"></label><label>Estoque mín<input id="f-min" type="number" step="0.01" value="${p.estoque_min || 0}" title="Ponto que dispara alerta e sugestão de compra"></label></div>
   <div class="row"><label>Código barras<input id="f-cb" value="${p.codigo_barras || ''}"></label><label>Tipo<select id="f-tipo"><option ${p.tipo === 'revenda' ? 'selected' : ''}>revenda</option><option value="insumo" ${p.tipo === 'insumo' ? 'selected' : ''}>insumo</option><option value="acabado" ${p.tipo === 'acabado' ? 'selected' : ''}>acabado</option><option value="servico" ${p.tipo === 'servico' ? 'selected' : ''}>servico</option></select></label></div>
+  <div class="row"><label>NCM<input id="f-ncm" value="${p.ncm || ''}" title="Nomenclatura fiscal"></label><label>CEST<input id="f-cest" value="${p.cest || ''}"></label><label>Alíquota %<input id="f-tax" type="number" step="0.01" value="${p.tax_rate || 0}"></label></div>
   <p><button class="btn sm ghost" id="btn-sug" title="Calcular preço pela margem desejada">💡 Sugerir preço por margem</button></p>
   <div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="btn-save">Salvar</button></div>`);
   $('#btn-sug').onclick = async () => {
@@ -250,7 +287,7 @@ async function formProduto(id) {
     $('#f-preco').value = j.preco; toast('Preço sugerido: ' + BRL(j.preco));
   };
   $('#btn-save').onclick = async () => {
-    const body = { nome: $('#f-nome').value.trim(), custo_medio: Number($('#f-custo').value), preco_venda: Number($('#f-preco').value), categoria_id: $('#f-cat2').value || null, unidade_id: $('#f-un').value || null, estoque_atual: Number($('#f-est').value), estoque_min: Number($('#f-min').value), ponto_reposicao: Number($('#f-min').value), codigo_barras: $('#f-cb').value, tipo: $('#f-tipo').value };
+    const body = { nome: $('#f-nome').value.trim(), custo_medio: Number($('#f-custo').value), preco_venda: Number($('#f-preco').value), categoria_id: $('#f-cat2').value || null, unidade_id: $('#f-un').value || null, estoque_atual: Number($('#f-est').value), estoque_min: Number($('#f-min').value), ponto_reposicao: Number($('#f-min').value), codigo_barras: $('#f-cb').value, tipo: $('#f-tipo').value, ncm: $('#f-ncm').value, cest: $('#f-cest').value, tax_rate: Number($('#f-tax').value) };
     if (!body.nome) return toast('Nome obrigatório');
     try { id ? await api.put('/api/products/' + id, body) : await api.post('/api/products', body); closeModal(); toast('✓ Produto salvo!'); route(); } catch (e) { toast(e.message); }
   };
@@ -289,18 +326,87 @@ function movForm(tipo0, inv) {
 }
 
 // ---------- COMPRAS ----------
+async function viewTransf(C) {
+  setTitle('Transferências', 'Entre filiais/lojas da empresa (com NF de transferência quando houver)');
+  const branches = await api.get('/api/branches');
+  const prods = (await api.get('/api/products?limit=100')).data;
+  const trs = await api.get('/api/transfers');
+  C.innerHTML = `<div class="toolbar"><button class="btn sm primary" id="t-new" title="Nova transferência">+ Transferir</button><button class="btn sm ghost" id="b-new" title="Cadastrar filial/loja (CNPJ)">+ Filial</button></div>
+  <div class="grid g2"><div class="card"><h3>🏪 Filiais/lojas</h3>${branches.map(b => `<p><b>${b.nome}</b><br><small class="muted">${b.cnpj || 'sem CNPJ'} · ${b.active ? 'ativa' : 'inativa'}</small></p>`).join('') || '<p class="muted">Cadastre Matriz + filiais com CNPJ.</p>'}</div>
+  <div class="card"><h3>🚚 Últimas transferências</h3>${trs.slice(0, 15).map(t => `<small>#${t.id} ${t.origem || '?'} → ${t.destino || '?'} · ${t.created_at || ''}</small><br>`).join('') || '<p class="muted">Nenhuma.</p>'}</div></div>`;
+  $('#b-new').onclick = () => {
+    modal(`<h3>Nova filial/loja</h3><label>Nome*<input id="x-n" placeholder="Ex: Matriz / Loja Centro"></label><label>CNPJ<input id="x-c" placeholder="00.000.000/0001-00"></label><label>Endereço<input id="x-e"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="x-ok">Salvar</button></div>`);
+    $('#x-ok').onclick = async () => { try { await api.post('/api/branches', { nome: $('#x-n').value, cnpj: $('#x-c').value, endereco: $('#x-e').value }); closeModal(); toast('✓ Filial salva!'); route(); } catch (e) { toast(e.message); } };
+  };
+  $('#t-new').onclick = () => {
+    if (branches.length < 2) return toast('Cadastre ao menos 2 filiais.');
+    let items = [];
+    const opts = branches.map(b => `<option value="${b.id}">${b.nome}</option>`).join('');
+    modal(`<h3>Nova transferência</h3><div class="row"><label>Origem<select id="tf">${opts}</select></label><label>Destino<select id="tt">${opts}</select></label></div>
+    <div class="row"><select id="ti-p">${prods.map(p => `<option value="${p.id}">${p.nome} (est ${p.estoque_atual})</option>`).join('')}</select><input id="ti-q" type="number" value="1" style="max-width:90px"></div>
+    <p><button class="btn sm ghost" id="ti-add">+ item</button> <span id="ti-l" class="muted"></span></p>
+    <label>Obs / NF<input id="ti-n" placeholder="Nº NF de transferência (se houver)"></label>
+    <div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="ti-ok">Transferir</button></div>`);
+    $('#ti-add').onclick = () => { items.push({ product_id: $('#ti-p').value, qtd: Number($('#ti-q').value) }); $('#ti-l').textContent = items.length + ' item(ns)'; };
+    $('#ti-ok').onclick = async () => { try { await api.post('/api/transfers', { from_branch_id: $('#tf').value, to_branch_id: $('#tt').value, items, notes: $('#ti-n').value }); closeModal(); toast('✓ Transferência concluída!'); route(); } catch (e) { toast(e.message); } };
+  };
+}
 async function viewCompras(C) {
-  setTitle('Compras', 'Pedidos, recebimentos e sugestão de compra');
+  setTitle('Compras', 'Pedidos, recebimento por NF, solicitações e transferências');
   const sups = await api.get('/api/suppliers');
   const prods = (await api.get('/api/products?limit=100')).data;
   const purs = await api.get('/api/purchases');
-  const baixo = prods.filter(p => p.estoque_atual <= (p.ponto_reposicao || p.estoque_min));
+  const sug = await api.get('/api/purchase-suggestions').catch(() => ({ data: [] }));
   C.innerHTML = `
-  ${baixo.length ? `<div class="card" style="border-left:5px solid var(--warn)">🛒 <b>Sugestão de compra:</b> ${baixo.map(p => p.nome).join(', ')} <small class="muted">— abaixo do ponto de reposição</small></div><br>` : ''}
-  <div class="toolbar"><button class="btn sm primary" id="c-new" title="Criar pedido de compra">+ Novo pedido</button></div>
-  <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>#</th><th>Fornecedor</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>
-  ${purs.map(p => `<tr><td>#${p.id}</td><td>${p.fornecedor || '-'}</td><td>${BRL(p.total)}</td><td><span class="tag ${p.status === 'recebido' ? 't-ok' : 't-info'}">${p.status}</span></td><td>${p.status !== 'recebido' ? `<button class="btn sm ok" data-r="${p.id}" title="Dar entrada no estoque e atualizar custo médio">Receber</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
-  document.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => { try { await api.post(`/api/purchases/${b.dataset.r}/receive`); toast('🟢 Compra recebida! Estoque e custo atualizados.'); route(); } catch (e) { toast(e.message); } });
+  <div class="toolbar">
+    <button class="btn sm primary" id="c-new" title="Criar pedido de compra">+ Novo pedido</button>
+    <button class="btn sm ok" id="c-rec" title="Digitar o nº do pedido: puxa os itens para conferir e editar">📦 Receber pedido/NF</button>
+    <button class="btn sm ghost" id="c-sug" title="Sugestões automáticas de compra (estoque baixo)">🛒 Solicitações (${sug.data.length})</button>
+    <button class="btn sm ghost" id="c-tr" title="Transferir produtos entre filiais/lojas">🚚 Transferências</button>
+  </div>
+  <div class="table-wrap card-pad0"><table><thead><tr><th>#</th><th>Fornecedor</th><th>NF</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>
+  ${purs.map(p => `<tr><td>#${p.id}</td><td>${p.fornecedor || '-'}</td><td>${p.nf_number || '-'}</td><td>${BRL(p.total)}</td><td><span class="tag ${p.status === 'recebido' ? 't-ok' : p.status === 'parcial' ? 't-warn' : 't-info'}">${statusLabel(p.status)}</span></td><td>${p.status !== 'recebido' ? `<button class="btn sm ok" data-r="${p.id}" title="Conferir itens e dar entrada">Receber</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  const openReceive = async (presetId) => {
+    const pid = presetId || prompt('Nº do pedido:');
+    if (!pid) return;
+    let pur;
+    try { pur = await api.get('/api/purchases/' + pid); }
+    catch { return toast('Pedido não encontrado.'); }
+    if (pur.status === 'recebido') return toast('Pedido já totalmente recebido.');
+    modal(`<h3>📦 Receber pedido #${pur.id} ${pur.fornecedor ? '· ' + pur.fornecedor : ''}</h3>
+    <div class="row"><label>NF número<input id="rc-nf" value="${pur.nf_number || ''}" title="Número da Nota Fiscal"></label><label>Chave NF-e<input id="rc-key" value="${pur.nf_key || ''}" title="Chave de acesso de 44 dígitos"></label></div>
+    <p class="muted">Confira e <b>edite as quantidades recebidas</b> (aceita parcial):</p>
+    ${pur.itens.map(it => { const rest = Number(it.qtd) - Number(it.qtd_recebida); return `<div class="row" style="align-items:end"><span style="flex:2"><b>${it.produto}</b><br><small class="muted">pedido ${it.qtd} · recebido ${it.qtd_recebida} · restam ${rest}</small></span><input data-ri="${it.product_id}" type="number" step="0.01" value="${rest}" min="0" max="${rest}" style="max-width:110px" title="Quantidade recebida agora"></div>`; }).join('')}
+    <br><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="rc-ok">Confirmar recebimento</button></div>`);
+    $('#rc-ok').onclick = async () => {
+      const items = [...document.querySelectorAll('[data-ri]')].map(el => ({ product_id: el.dataset.ri, qtd: Number(el.value) }));
+      try {
+        const j = await api.post(`/api/purchases/${pur.id}/receive`, { items, nf_number: $('#rc-nf').value, nf_key: $('#rc-key').value });
+        closeModal(); toast(`🟢 Recebido ${BRL(j.recebido)} (${j.status})!`); route();
+      } catch (e) { toast(e.message); }
+    };
+  };
+  document.querySelectorAll('[data-r]').forEach(b => b.onclick = () => openReceive(b.dataset.r));
+  $('#c-rec').onclick = () => openReceive(null);
+  $('#c-sug').onclick = async () => {
+    const s2 = await api.get('/api/purchase-suggestions');
+    if (!s2.data.length) return toast('Nenhuma solicitação: estoque OK.');
+    modal(`<h3>🛒 Solicitações de compra</h3><p class="muted">Regra: ${s2.mode === 'reorder' ? 'ponto de reposição' : 'estoque mínimo'} (Empresa → Estoque).</p>
+    ${s2.data.map((p, i) => `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-sg="${i}" checked style="width:auto"><span style="flex:1"><b>${p.nome}</b><br><small class="muted">est ${p.estoque_atual} · mín ${p.minimo} · sugerido ${p.sugerido}</small></span><input data-sq="${i}" type="number" value="${p.sugerido}" style="max-width:100px"></label>`).join('')}
+    <label>Fornecedor<select id="sg-s">${sups.map(x => `<option value="${x.id}">${x.fantasia || x.razao}</option>`).join('')}</select></label>
+    <div class="row"><button class="btn ghost" onclick="closeModal()">Fechar</button><button class="btn ok" id="sg-ok">Criar pedido</button></div>`);
+    window._sug = s2.data;
+    $('#sg-ok').onclick = async () => {
+      const items = [...document.querySelectorAll('[data-sg]:checked')].map(cb => {
+        const p = window._sug[cb.dataset.sg];
+        const q = Number(document.querySelector(`[data-sq="${cb.dataset.sg}"]`).value);
+        return { product_id: p.product_id, qtd: q, custo_unit: p.custo_medio };
+      }).filter(i => i.qtd > 0);
+      if (!items.length) return toast('Selecione ao menos um item.');
+      try { const j = await api.post('/api/purchases', { supplier_id: $('#sg-s').value, items }); closeModal(); toast(`Pedido #${j.id} criado!`); route(); } catch (e) { toast(e.message); }
+    };
+  };
+  $('#c-tr').onclick = () => { location.hash = '#/transf'; route(); };
   $('#c-new').onclick = () => {
     let items = [];
     modal(`<h3>Novo pedido</h3><label>Fornecedor<select id="pc-s">${sups.map(s => `<option value="${s.id}">${s.fantasia || s.razao}</option>`).join('')}</select></label>
@@ -314,40 +420,102 @@ async function viewCompras(C) {
 
 // ---------- PDV ----------
 async function viewPDV(C) {
-  setTitle('PDV', 'Venda rápida com baixa automática');
+  setTitle('PDV', 'Venda rápida: caixa, multi-pagamento e PIX QR');
   const prods = (await api.get('/api/products?limit=100')).data.filter(p => p.status === 'ativo');
   const clis = await api.get('/api/customers');
-  C.innerHTML = `<div class="grid g2"><div class="card"><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" style="max-height:380px;overflow:auto;margin-top:8px"></div></div>
+  let abertos = [];
+  try { abertos = (await api.get('/api/cash')).filter(c => c.status === 'aberto'); } catch {}
+  let caixaSel = localStorage.getItem('caixa') || (abertos[0] && abertos[0].id) || '';
+  C.innerHTML = `
+  <div class="card" style="margin-bottom:12px"><div class="row">
+    <label title="Caixa/terminal em uso. Ex: caixa 1">Caixa<select id="pdv-cx"><option value="">Sem caixa</option>${abertos.map(c => `<option value="${c.id}" ${String(c.id) === String(caixaSel) ? 'selected' : ''}>Caixa ${c.terminal} · ${c.operator_name || ''}</option>`).join('')}</select></label>
+    <label title="Funcionário operador do caixa">Operador<input id="pdv-op" value="${ME.name}"></label>
+  </div><button class="btn sm ghost" id="pdv-open" title="Abrir novo turno de caixa">🧾 Abrir caixa</button></div>
+  <div class="grid g2"><div class="card"><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" style="max-height:340px;overflow:auto;margin-top:8px"></div></div>
   <div class="card"><h3>🧾 Carrinho</h3><div id="cart"></div><label>Cliente<select id="cart-cli"><option value="">Balcão</option>${clis.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></label>
-  <div class="row"><label>Desconto<input id="cart-desc" type="number" value="0"></label><label>Pagamento<select id="cart-pag" title="Dinheiro, Pix, cartão ou fiado"><option>dinheiro</option><option>pix</option><option>cartao</option><option>fiado</option></select></label></div>
-  <h2 id="cart-total">Total: R$ 0,00</h2><button class="btn primary" id="cart-fin" title="Finalizar: baixa estoque, atualiza financeiro e registra auditoria">Finalizar venda</button></div></div>`;
+  <label>Desconto<input id="cart-desc" type="number" value="0" min="0"></label>
+  <h3>Pagamento (pode dividir)</h3><div id="pays"></div>
+  <p><button class="btn sm ghost" id="pay-add" title="Adicionar outra forma (ex: parte dinheiro + parte crédito)">+ Forma de pagamento</button></p>
+  <h2 id="cart-total">Total: R$ 0,00</h2><p id="pay-rest" class="muted"></p>
+  <label><input type="checkbox" id="cart-wait" style="width:auto"> Deixar aguardando pagamento</label><br><br>
+  <button class="btn primary" id="cart-fin" title="Finalizar: baixa estoque, financeiro e auditoria">Finalizar venda</button></div></div>`;
   let cart = [];
+  let pays = [{ method: 'dinheiro', amount: 0 }];
+  const PM = [['dinheiro', 'Dinheiro'], ['pix', 'Pix'], ['cartao_credito', 'Crédito'], ['cartao_debito', 'Débito'], ['fiado', 'Fiado']];
+  const tot = () => Math.max(0, cart.reduce((s, i) => s + i.qtd * i.preco_unit, 0) - Number($('#cart-desc').value || 0));
+  function drawPays() {
+    $('#pays').innerHTML = pays.map((p, i) => `<div class="row" style="align-items:end"><label style="flex:2">Forma<select data-pm="${i}">${PM.map(([v, n]) => `<option value="${v}" ${p.method === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label><label>Valor<input data-pv="${i}" type="number" min="0" step="0.01" value="${p.amount}"></label>${pays.length > 1 ? `<button class="btn sm danger" data-px="${i}" title="Remover forma">×</button>` : ''}</div>`).join('');
+    document.querySelectorAll('[data-pm]').forEach(s => s.onchange = () => { pays[s.dataset.pm].method = s.value; });
+    document.querySelectorAll('[data-pv]').forEach(s => s.oninput = () => { pays[s.dataset.pv].amount = Number(s.value); drawRest(); });
+    document.querySelectorAll('[data-px]').forEach(b => b.onclick = () => { pays.splice(b.dataset.px, 1); drawPays(); drawRest(); });
+  }
+  function drawRest() {
+    const t = tot(), sum = pays.reduce((s, p) => s + Number(p.amount || 0), 0);
+    $('#cart-total').textContent = 'Total: ' + BRL(t);
+    const rest = Number((t - sum).toFixed(2));
+    $('#pay-rest').textContent = rest > 0 ? `Faltam ${BRL(rest)} — clique em Completar` : (rest < 0 ? `Ultrapassou ${BRL(-rest)}` : '✓ Pagamento confere');
+    $('#pay-rest').innerHTML += rest > 0 ? ` <button class="btn sm ghost" id="pay-fill">Completar</button>` : '';
+    const f = $('#pay-fill'); if (f) f.onclick = () => { pays[pays.length - 1].amount = Number((Number(pays[pays.length - 1].amount || 0) + rest).toFixed(2)); drawPays(); drawRest(); };
+  }
   function drawList() {
     const q = ($('#pdv-q').value || '').toLowerCase();
     $('#pdv-list').innerHTML = prods.filter(p => p.nome.toLowerCase().includes(q)).slice(0, 50).map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--line)"><span><b>${p.nome}</b><br><small class="muted">${BRL(p.preco_venda)} · est ${p.estoque_atual}</small></span><button class="btn sm primary" data-a="${p.id}" title="Adicionar ao carrinho">+</button></div>`).join('');
     document.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { const p = prods.find(x => x.id == b.dataset.a); cart.push({ product_id: p.id, nome: p.nome, qtd: 1, preco_unit: p.preco_venda }); drawCart(); });
   }
   function drawCart() {
-    const tot = cart.reduce((s, i) => s + i.qtd * i.preco_unit, 0) - Number($('#cart-desc').value || 0);
     $('#cart').innerHTML = cart.map((i, idx) => `<div style="display:flex;gap:6px;align-items:center;margin:4px 0"><span style="flex:1">${i.nome} x${i.qtd}</span><button class="btn sm ghost" data-d="${idx}">−</button></div>`).join('') || '<p class="muted">Carrinho vazio.</p>';
-    $('#cart-total').textContent = 'Total: ' + BRL(Math.max(0, tot));
     document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { cart.splice(b.dataset.d, 1); drawCart(); });
+    if (pays.length === 1 && !pays[0].amount) pays[0].amount = tot();
+    drawPays(); drawRest();
   }
   $('#pdv-q').oninput = drawList; $('#cart-desc').oninput = drawCart;
+  $('#pay-add').onclick = () => { pays.push({ method: 'cartao_credito', amount: 0 }); drawPays(); };
+  $('#pdv-cx').onchange = e => { caixaSel = e.target.value; localStorage.setItem('caixa', caixaSel); };
+  $('#pdv-open').onclick = () => {
+    modal(`<h3>🧾 Abrir caixa</h3><div class="row"><label>Caixa/terminal<input id="o-t" value="1" title="Ex: 1 ou 2"></label><label>Funcionário<input id="o-o" value="${ME.name}" title="Ex: Bianca"></label></div><label>Saldo inicial<input id="o-s" type="number" value="0"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="o-ok">Abrir</button></div>`);
+    $('#o-ok').onclick = async () => { try { const j = await api.post('/api/cash/open', { terminal: $('#o-t').value, operator_name: $('#o-o').value, saldo_inicial: Number($('#o-s').value) }); closeModal(); localStorage.setItem('caixa', j.id); toast('✓ Caixa aberto!'); route(); } catch (e) { toast(e.message); } };
+  };
   drawList(); drawCart();
   $('#cart-fin').onclick = async () => {
     try {
-      const j = await api.post('/api/sales', { customer_id: $('#cart-cli').value || null, items: cart, desconto: Number($('#cart-desc').value), pagamento: $('#cart-pag').value });
-      toast(`✓ Venda #${j.id} realizada! Total ${BRL(j.total)}`); cart = []; drawCart();
+      const j = await api.post('/api/sales', { customer_id: $('#cart-cli').value || null, items: cart, desconto: Number($('#cart-desc').value), payments: pays, caixa_id: caixaSel || null, operator_name: $('#pdv-op').value, awaiting: $('#cart-wait').checked });
+      const det = await api.get('/api/sales/' + j.id);
+      const co = await api.get('/api/company').catch(() => ({}));
+      const hasPix = pays.some(p => p.method === 'pix');
+      modal(`<h3>✓ Venda #${j.id} — ${BRL(j.total)}</h3><p class="muted">Status: ${statusLabel(j.status)}</p>
+      <div class="row"><button class="btn ghost" id="m-cup" title="Imprimir cupom (impressora padrão)">🧾 Cupom</button>${hasPix ? '<button class="btn primary" id="m-qr" title="Exibir QR Code PIX da venda">PIX QR</button>' : ''}<button class="btn ghost" onclick="closeModal()">Fechar</button></div><div id="m-qrbox" style="text-align:center;margin-top:10px"></div>`);
+      $('#m-cup').onclick = () => printHtml('Cupom #' + j.id, receiptHtml(det, co));
+      const qr = $('#m-qr');
+      if (qr) qr.onclick = async () => { try { const px = await api.post(`/api/sales/${j.id}/pix`); $('#m-qrbox').innerHTML = `<img src="${px.qr}" style="max-width:220px"><p class="muted">Escaneie para pagar ${BRL(det.total)}</p><small class="break">${px.brcode}</small>`; } catch (e) { toast(e.message); } };
+      cart = []; pays = [{ method: 'dinheiro', amount: 0 }]; drawCart();
     } catch (e) { toast(e.message); }
   };
 }
 async function viewVendas(C) {
-  setTitle('Vendas', 'Histórico, cancelamento e devolução');
+  setTitle('Vendas', 'Código, cliente, produtos, pagamento e status');
   const s = await api.get('/api/sales');
-  C.innerHTML = `<div class="toolbar"><button class="btn sm ghost" id="v-csv" title="Exportar CSV">📊 CSV</button></div><div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>#</th><th>Cliente</th><th>Total</th><th>Pagto</th><th>Status</th><th></th></tr></thead><tbody>${s.map(v => `<tr><td>#${v.id}</td><td>${v.cliente || 'Balcão'}</td><td>${BRL(v.total)}</td><td>${v.pagamento}</td><td>${v.status}</td><td>${v.status !== 'cancelada' && (ME.role === 'admin' || ME.role === 'gerente') ? `<button class="btn sm danger" data-c="${v.id}" title="Cancelar e devolver ao estoque">Cancelar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
-  $('#v-csv').onclick = () => csv('vendas.csv', s);
-  document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => confirmDlg('Cancelar esta venda e devolver itens ao estoque?', async () => { await api.post(`/api/sales/${b.dataset.c}/cancel`); toast('Venda cancelada.'); route(); }));
+  const can = ME.role === 'admin' || ME.role === 'gerente' || ME.role === 'superadmin';
+  C.innerHTML = `<div class="toolbar"><button class="btn sm ghost" id="v-csv" title="Exportar CSV">📊 CSV</button><button class="btn sm ghost" id="v-xls" title="Exportar Excel">📗 Excel</button></div>
+  <div class="table-wrap card-pad0"><table><thead><tr><th>Cód</th><th>Cliente</th><th>Produtos</th><th>Total</th><th>Desc.</th><th>Pagamento</th><th>Status</th><th></th></tr></thead><tbody>${s.map(v => `<tr>
+  <td><b>#${v.id}</b><br><small class="muted">${(v.created_at || '').slice(0, 10)}</small></td>
+  <td>${v.cliente || 'Balcão'}</td>
+  <td><small>${(v.itens || []).map(i => `${i.qtd}x ${i.nome}`).join('<br>')}</small></td>
+  <td>${BRL(v.total)}</td><td>${BRL(v.desconto)}</td>
+  <td><small>${(v.payments || []).map(p => `${payLabel(p.method)} ${BRL(p.amount)}`).join('<br>') || payLabel(v.pagamento)}</small></td>
+  <td><span class="tag ${v.status === 'finalizada' ? 't-ok' : v.status === 'cancelada' ? 't-bad' : 't-warn'}">${statusLabel(v.status)}</span></td>
+  <td class="nowrap"><button class="btn sm ghost" data-v="${v.id}" title="Ver cupom / imprimir">🧾</button>
+  ${v.status === 'aguardando_pagamento' && can ? `<button class="btn sm ok" data-ok="${v.id}" title="Confirmar recebimento e concluir">✓ Receber</button>` : ''}
+  ${v.status !== 'cancelada' && can ? `<button class="btn sm danger" data-c="${v.id}" title="Cancelar e devolver ao estoque">Cancelar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  $('#v-csv').onclick = () => csv('vendas.csv', s.map(v => ({ codigo: v.id, data: v.created_at, cliente: v.cliente, total: v.total, desconto: v.desconto, pagamento: (v.payments || []).map(p => payLabel(p.method) + ' ' + p.amount).join(' + '), status: v.status })));
+  $('#v-xls').onclick = () => xls('vendas', s.map(v => ({ codigo: v.id, data: v.created_at, cliente: v.cliente, total: v.total, desconto: v.desconto, pagamento: (v.payments || []).map(p => payLabel(p.method) + ' ' + p.amount).join(' + '), status: statusLabel(v.status) })));
+  document.querySelectorAll('[data-v]').forEach(b => b.onclick = async () => {
+    const det = await api.get('/api/sales/' + b.dataset.v);
+    const co = await api.get('/api/company').catch(() => ({}));
+    modal(`<h3>Cupom #${det.id}</h3><div style="border:1px solid var(--line);border-radius:10px;padding:10px">${receiptHtml(det, co)}</div><br><div class="row"><button class="btn ghost" onclick="closeModal()">Fechar</button><button class="btn primary" id="v-print" title="Imprimir cupom">🖨️ Imprimir</button></div>`);
+    $('#v-print').onclick = () => printHtml('Cupom #' + det.id, receiptHtml(det, co));
+  });
+  document.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => confirmDlg('Confirmar recebimento e concluir a venda?', async () => { try { await api.post(`/api/sales/${b.dataset.ok}/receber`); toast('✓ Venda concluída!'); route(); } catch (e) { toast(e.message); } }));
+  document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => confirmDlg('Cancelar esta venda e devolver itens ao estoque?', async () => { try { await api.post(`/api/sales/${b.dataset.c}/cancel`); toast('Venda cancelada.'); route(); } catch (e) { toast(e.message); } }));
 }
 
 // ---------- CADASTROS SIMPLES ----------
@@ -389,19 +557,47 @@ async function viewFinanceiro(C) {
   const s = await api.get('/api/finance/summary');
   const dre = (ME.role === 'admin' || ME.role === 'gerente') ? await api.get('/api/finance/dre') : null;
   const pg = await api.get('/api/finance/pagar'); const rc = await api.get('/api/finance/receber');
+  const cx = await api.get('/api/cash').catch(() => []);
   C.innerHTML = `<div class="grid g4"><div class="card"><h3>A pagar</h3><div class="big">${BRL(s.aPagar)}</div></div><div class="card"><h3>A receber</h3><div class="big">${BRL(s.aReceber)}</div></div><div class="card"><h3>Vendas hoje</h3><div class="big">${BRL(s.vendasHoje)}</div></div><div class="card"><h3>Saldo previsto</h3><div class="big">${BRL(s.saldoPrevisto)}</div></div></div>
-  ${dre ? `<div class="card" style="margin-top:12px"><b>DRE:</b> Receita ${BRL(dre.receita)} − Custos ${BRL(dre.custos)} − Despesas ${BRL(dre.despesas)} = <b>Lucro ${BRL(dre.lucro)}</b> (${dre.margem}%)</div>` : ''}
-  <div class="grid g2" style="margin-top:12px"><div class="card"><h3>Contas a pagar</h3>${pg.slice(0, 8).map(p => `<small>${p.descricao} · ${BRL(p.valor)} · ${p.status} ${p.status === 'aberto' ? `<button class="btn sm ok" data-p="${p.id}">Baixar</button>` : ''}</small><br>`).join('')}</div>
-  <div class="card"><h3>Contas a receber</h3>${rc.slice(0, 8).map(p => `<small>${p.descricao} · ${BRL(p.valor)} · ${p.status} ${p.status === 'aberto' ? `<button class="btn sm ok" data-r="${p.id}">Baixar</button>` : ''}</small><br>`).join('')}</div></div>`;
-  document.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { await api.post(`/api/finance/pagar/${b.dataset.p}/baixar`); toast('Conta paga!'); route(); });
-  document.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => { await api.post(`/api/finance/receber/${b.dataset.r}/baixar`); toast('Conta recebida!'); route(); });
+  ${dre ? `<div class="card" style="margin-top:12px"><b>DRE:</b> Receita ${BRL(dre.receita)} − Custos ${BRL(dre.custos)} − Despesas ${BRL(dre.despesas)} = <b>Lucro ${BRL(dre.lucro)}</b> (${dre.margem}%) <button class="btn sm ghost" id="dre-print" title="Imprimir DRE / salvar PDF">🖨️</button></div>` : ''}
+  <div class="card" style="margin-top:12px"><h3>🧾 Caixas (turnos)</h3><div class="toolbar"><button class="btn sm primary" id="cx-open" title="Abrir turno: terminal + funcionário + saldo inicial">+ Abrir caixa</button></div>
+  ${cx.map(c => `<small><b>Caixa ${c.terminal || '-'}</b> · ${c.operator_name || ''} · inicial ${BRL(c.saldo_inicial)} · vendido ${BRL(c.total_vendido)} · <span class="tag ${c.status === 'aberto' ? 't-ok' : 't-info'}">${statusLabel(c.status)}</span> ${c.status === 'aberto' ? `<button class="btn sm warn" data-cx="${c.id}" title="Fechar turno informando saldo final">Fechar</button>` : `<span class="muted">final ${BRL(c.saldo_final)}</span>`}</small><br>`).join('') || '<p class="muted">Nenhum caixa.</p>'}</div>
+  <div class="grid g2" style="margin-top:12px"><div class="card"><h3>Contas a pagar</h3><div class="toolbar"><button class="btn sm ghost" data-exp="pg-csv" title="Exportar CSV">CSV</button><button class="btn sm ghost" data-exp="pg-xls" title="Exportar Excel">Excel</button></div>${pg.slice(0, 8).map(p => `<small>${p.descricao} · ${BRL(p.valor)} · ${statusLabel(p.status)} ${p.status === 'aberto' ? `<button class="btn sm ok" data-p="${p.id}">Baixar</button>` : ''}</small><br>`).join('')}</div>
+  <div class="card"><h3>Contas a receber</h3><div class="toolbar"><button class="btn sm ghost" data-exp="rc-csv" title="Exportar CSV">CSV</button><button class="btn sm ghost" data-exp="rc-xls" title="Exportar Excel">Excel</button></div>${rc.slice(0, 8).map(p => `<small>${p.descricao} · ${BRL(p.valor)} · ${statusLabel(p.status)} ${p.status === 'aberto' ? `<button class="btn sm ok" data-r="${p.id}">Baixar</button>` : ''}</small><br>`).join('')}</div></div>`;
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { try { await api.post(`/api/finance/pagar/${b.dataset.p}/baixar`); toast('Conta paga!'); route(); } catch (e) { toast(e.message); } });
+  document.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => { try { await api.post(`/api/finance/receber/${b.dataset.r}/baixar`); toast('Conta recebida!'); route(); } catch (e) { toast(e.message); } });
+  document.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => {
+    const isPg = b.dataset.exp.startsWith('pg');
+    const rows = (isPg ? pg : rc).map(x => ({ descricao: x.descricao, valor: x.valor, vencimento: x.vencimento, status: x.status }));
+    if (b.dataset.exp.endsWith('csv')) csv('contas.csv', rows); else xls('contas', rows);
+  });
+  const dp = $('#dre-print'); if (dp) dp.onclick = () => printHtml('DRE', `<div class="c"><h2>DRE Simplificado</h2></div><hr>Receita: ${BRL(dre.receita)}<br>Custos: ${BRL(dre.custos)}<br>Despesas: ${BRL(dre.despesas)}<br><b>Lucro: ${BRL(dre.lucro)} (${dre.margem}%)</b>`);
+  document.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => {
+    modal(`<h3>Fechar caixa</h3><label>Saldo final contado<input id="cx-f" type="number" step="0.01"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="cx-ok">Fechar</button></div>`);
+    $('#cx-ok').onclick = async () => { try { const j = await api.post(`/api/cash/${b.dataset.cx}/close`, { saldo_final: Number($('#cx-f').value) }); closeModal(); toast(`✓ Fechado! Vendido ${BRL(j.vendido)}`); route(); } catch (e) { toast(e.message); } };
+  });
+  $('#cx-open').onclick = () => {
+    modal(`<h3>Abrir caixa</h3><div class="row"><label>Caixa/terminal<input id="o-t" value="1"></label><label>Funcionário<input id="o-o" value="${ME.name}"></label></div><label>Saldo inicial<input id="o-s" type="number" value="0"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="o-ok">Abrir</button></div>`);
+    $('#o-ok').onclick = async () => { try { await api.post('/api/cash/open', { terminal: $('#o-t').value, operator_name: $('#o-o').value, saldo_inicial: Number($('#o-s').value) }); closeModal(); toast('✓ Caixa aberto!'); route(); } catch (e) { toast(e.message); } };
+  };
 }
 async function viewRelatorios(C) {
-  setTitle('Relatórios', 'Filtráveis e exportáveis em CSV');
-  C.innerHTML = `<div class="toolbar"><select id="r-t"><option value="estoque">Posição de estoque</option><option value="vendas">Vendas</option><option value="margens">Margens e lucros</option><option value="perdas">Perdas</option><option value="curva-abc">Curva ABC</option></select><button class="btn sm primary" id="r-go" title="Gerar relatório">Gerar</button><button class="btn sm ghost" id="r-csv" title="Exportar CSV">📊 CSV</button></div><div id="r-out"></div>`;
-  let last = [];
-  $('#r-go').onclick = async () => { last = await api.get('/api/reports/' + $('#r-t').value); $('#r-out').innerHTML = `<div class="card" style="padding:0;overflow:auto"><table><tbody>${last.slice(0, 100).map(r => `<tr>${Object.values(r).slice(0, 5).map(v => `<td>${v ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="muted">${last.length} registros</p>`; };
+  setTitle('Relatórios', 'Filtráveis e exportáveis em CSV, Excel e PDF');
+  const co = await api.get('/api/company').catch(() => ({}));
+  const TNAMES = { estoque: 'Posição de estoque', vendas: 'Vendas', margens: 'Margens e lucros', perdas: 'Perdas', 'curva-abc': 'Curva ABC' };
+  C.innerHTML = `<div class="toolbar"><select id="r-t"><option value="estoque">Posição de estoque</option><option value="vendas">Vendas</option><option value="margens">Margens e lucros</option><option value="perdas">Perdas</option><option value="curva-abc">Curva ABC</option></select><button class="btn sm primary" id="r-go" title="Gerar relatório">Gerar</button><button class="btn sm ghost" id="r-csv" title="Exportar CSV">📊 CSV</button><button class="btn sm ghost" id="r-xls" title="Exportar Excel">📗 Excel</button><button class="btn sm ghost" id="r-pdf" title="Imprimir / salvar PDF formatado">🖨️ PDF</button></div><div id="r-out"></div>`;
+  let last = [], lastTipo = 'estoque';
+  $('#r-go').onclick = async () => {
+    lastTipo = $('#r-t').value; last = await api.get('/api/reports/' + lastTipo);
+    $('#r-out').innerHTML = `<div class="table-wrap card-pad0"><table><tbody>${last.slice(0, 100).map(r => `<tr>${Object.values(r).slice(0, 5).map(v => `<td>${v ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="muted">${last.length} registros · ${TNAMES[lastTipo]} · ${co.nome || ''}</p>`;
+  };
   $('#r-csv').onclick = () => csv('relatorio.csv', last);
+  $('#r-xls').onclick = () => xls('relatorio', last);
+  $('#r-pdf').onclick = () => {
+    if (!last.length) return toast('Gere o relatório primeiro.');
+    const ks = Object.keys(last[0]).slice(0, 5);
+    printHtml(TNAMES[lastTipo], `<div class="c"><h2>${co.nome || ''}</h2><small>${TNAMES[lastTipo]} · ${new Date().toLocaleString('pt-BR')} · ${last.length} registros</small></div><hr><table><thead><tr>${ks.map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>${last.map(r => `<tr>${ks.map(k => `<td>${r[k] ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+  };
 }
 async function viewSegmento(C) {
   const seg = ME.company_segmento || 'mercado';
@@ -441,26 +637,52 @@ async function viewUsuarios(C) {
   $('#n').onclick = () => { modal(`<h3>Novo usuário</h3><label>Nome<input id="x-n"></label><label>E-mail<input id="x-e"></label><label>Senha<input id="x-s" type="password"></label><label>Perfil<select id="x-r"><option>admin</option><option>gerente</option><option>vendedor</option><option>estoquista</option></select></label>${isSaaS ? `<label>ID da empresa<input id="x-c" type="number" min="1" title="Veja o ID no Painel SaaS"></label>` : ''}<div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="x-ok">Criar</button></div>`); $('#x-ok').onclick = async () => { try { const body = { name: $('#x-n').value, email: $('#x-e').value, password: $('#x-s').value, role: $('#x-r').value }; if (isSaaS) body.company_id = Number($('#x-c').value); await api.post('/api/users', body); closeModal(); toast('✓ Usuário criado!'); route(); } catch (e) { toast(e.message); } }; };
 }
 async function viewEmpresa(C) {
-  setTitle('Empresa', 'Seus dados — banco isolado por empresa');
+  setTitle('Empresa', 'Dados, fiscal, impressoras, banco e regras');
   const e = await api.get('/api/company');
   const logo = e.logo || (e.info && e.info.logo) || '';
+  const v = k => (e[k] ?? '').toString().replace(/"/g, '&quot;');
   C.innerHTML = `<div class="card">
-  <div class="logo-row"><img id="e-prev" class="logo-prev" src="${logo}" alt="Logo"><div>
-  <label class="btn sm ghost" style="cursor:pointer" title="Enviar PNG/JPG da fachada ou marca">📷 Escolher logo<input id="e-file" type="file" accept="image/*" class="hidden"></label>
-  <button class="btn sm ghost" id="e-rm" title="Remover logo atual">Remover</button>
-  <p class="muted">A logo aparece no menu do sistema desta empresa.</p></div></div>
-  <label>Nome<input id="e-n" value="${(e.nome || '').replace(/"/g, '&quot;')}"></label><label>Segmento<select id="e-s"><option ${e.segmento === 'mercado' ? 'selected' : ''}>mercado</option><option value="marmitaria" ${e.segmento === 'marmitaria' ? 'selected' : ''}>marmitaria</option><option value="salao" ${e.segmento === 'salao' ? 'selected' : ''}>salao</option><option value="peixaria" ${e.segmento === 'peixaria' ? 'selected' : ''}>peixaria</option></select></label><label>Margem mínima %<input id="e-m" type="number" value="${e.margem_minima || 20}" title="Alerta quando a margem cair abaixo disso"></label><button class="btn ok" id="e-ok">Salvar</button><p class="muted">ID da empresa: ${e.id} · Cada empresa tem seu arquivo isolado em /data/tenant_${e.id}.sqlite</p></div>`;
-  let newLogo = undefined; // undefined = manter
+  <h3>Logo</h3><div class="logo-row"><img id="e-prev" class="logo-prev" src="${logo}" alt="Logo"><div>
+  <label class="btn sm ghost" style="cursor:pointer" title="Enviar PNG/JPG da marca">📷 Escolher logo<input id="e-file" type="file" accept="image/*" class="hidden"></label>
+  <button class="btn sm ghost" id="e-rm" title="Remover logo atual">Remover</button></div></div>
+  <h3>Dados (Empresa ou Pessoa Física)</h3>
+  <div class="row"><label>Tipo<select id="e-pt"><option value="PJ" ${e.person_type !== 'PF' ? 'selected' : ''}>Pessoa Jurídica</option><option value="PF" ${e.person_type === 'PF' ? 'selected' : ''}>Pessoa Física</option></select></label><label>Nome/Razão<input id="e-n" value="${v('nome')}"></label></div>
+  <div class="row"><label>CNPJ/CPF<input id="e-doc" value="${v('doc') || v('cnpj')}" title="Documento principal"></label><label>IE/RG<input id="e-ie" value="${v('ie')}"></label></div>
+  <div class="row"><label>CEP<input id="e-cep" value="${v('cep')}"></label><label>Endereço<input id="e-st" value="${v('endereco') || ((v('street') + ' ' + v('number')).trim())}"></label></div>
+  <div class="row"><label>Cidade<input id="e-city" value="${v('city')}"></label><label>UF<input id="e-uf" value="${v('uf')}" maxlength="2"></label></div>
+  <div class="row"><label>Telefone<input id="e-tel" value="${v('telefone')}"></label><label>E-mail<input id="e-mail" value="${v('email')}"></label></div>
+  <h3>Pagamentos / Conta bancária / PIX</h3>
+  <div class="row"><label>Titular<select id="e-ht"><option value="PJ" ${e.holder_type !== 'PF' ? 'selected' : ''}>Empresa</option><option value="PF" ${e.holder_type === 'PF' ? 'selected' : ''}>Pessoa Física</option></select></label><label>Banco<input id="e-bank" value="${v('bank_name')}" placeholder="Ex: Banco do Brasil"></label></div>
+  <div class="row"><label>Agência<input id="e-ag" value="${v('bank_agency')}"></label><label>Conta<input id="e-ac" value="${v('bank_account')}"></label></div>
+  <div class="row"><label>Tipo chave PIX<select id="e-pxt"><option value="">—</option>${['CPF', 'CNPJ', 'E-mail', 'Telefone', 'Aleatória'].map(t => `<option ${e.pix_key_type === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>Chave PIX<input id="e-px" value="${v('pix_key')}" title="Usada para gerar o QR Code no PDV"></label></div>
+  <h3>Fiscal e impostos</h3>
+  <div class="row"><label>Regime<select id="e-tr"><option value="simples" ${e.tax_regime !== 'presumido' && e.tax_regime !== 'real' ? 'selected' : ''}>Simples Nacional</option><option value="presumido" ${e.tax_regime === 'presumido' ? 'selected' : ''}>Lucro Presumido</option><option value="real" ${e.tax_regime === 'real' ? 'selected' : ''}>Lucro Real</option></select></label><label>Margem mínima %<input id="e-m" type="number" value="${e.margem_minima || 20}"></label></div>
+  <div class="row"><label>ICMS %<input id="e-icms" type="number" step="0.01" value="${e.icms_default || 0}"></label><label>PIS %<input id="e-pis" type="number" step="0.01" value="${e.pis_default || 0}"></label><label>COFINS %<input id="e-cof" type="number" step="0.01" value="${e.cofins_default || 0}"></label></div>
+  <h3>Impressoras</h3>
+  <div class="row"><label>Cupom (não fiscal)<input id="e-pc" value="${v('printer_coupon')}" placeholder="Ex: Bematech MP-4200"></label><label>NF-e/NFC-e<input id="e-pn" value="${v('printer_nfe')}" placeholder="Ex: Epson TM-T20"></label></div>
+  <div class="row"><label>Largura papel<select id="e-pw"><option ${e.paper_width !== '58mm' ? 'selected' : ''}>80mm</option><option ${e.paper_width === '58mm' ? 'selected' : ''}>58mm</option></select></label><label>Rodapé cupom<input id="e-rf" value="${v('receipt_footer')}"></label></div>
+  <h3>Regra de estoque baixo</h3>
+  <label title="Quando gerar solicitação de compra">Regra<select id="e-rm"><option value="min" ${e.reorder_mode !== 'reorder' ? 'selected' : ''}>Estoque mínimo</option><option value="reorder" ${e.reorder_mode === 'reorder' ? 'selected' : ''}>Ponto de reposição</option></select></label>
+  <label>Segmento<select id="e-s"><option ${e.segmento === 'mercado' ? 'selected' : ''}>mercado</option><option value="marmitaria" ${e.segmento === 'marmitaria' ? 'selected' : ''}>marmitaria</option><option value="salao" ${e.segmento === 'salao' ? 'selected' : ''}>salao</option><option value="peixaria" ${e.segmento === 'peixaria' ? 'selected' : ''}>peixaria</option></select></label>
+  <button class="btn ok" id="e-ok">Salvar tudo</button><p class="muted">ID: ${e.id} · /data/tenant_${e.id}.sqlite · Emissão fiscal completa (SEFAZ) no roadmap.</p></div>`;
+  let newLogo = undefined;
   const prev = $('#e-prev');
   if (!logo) prev.classList.add('hidden');
-  $('#e-file').onchange = async ev => {
-    try { newLogo = await pickLogo(ev.target.files[0]); prev.src = newLogo; prev.classList.remove('hidden'); }
-    catch (err) { toast(err.message); }
-  };
+  $('#e-file').onchange = async ev => { try { newLogo = await pickLogo(ev.target.files[0]); prev.src = newLogo; prev.classList.remove('hidden'); } catch (err) { toast(err.message); } };
   $('#e-rm').onclick = () => { newLogo = ''; prev.removeAttribute('src'); prev.classList.add('hidden'); };
   $('#e-ok').onclick = async () => {
     try {
-      const body = { nome: $('#e-n').value, segmento: $('#e-s').value, margem_minima: Number($('#e-m').value) };
+      const body = {
+        person_type: $('#e-pt').value, nome: $('#e-n').value, doc: $('#e-doc').value, ie: $('#e-ie').value,
+        cep: $('#e-cep').value, endereco: $('#e-st').value, city: $('#e-city').value, uf: $('#e-uf').value,
+        telefone: $('#e-tel').value, email: $('#e-mail').value,
+        holder_type: $('#e-ht').value, bank_name: $('#e-bank').value, bank_agency: $('#e-ag').value, bank_account: $('#e-ac').value,
+        pix_key_type: $('#e-pxt').value, pix_key: $('#e-px').value, pix_name: $('#e-n').value, pix_city: $('#e-city').value,
+        tax_regime: $('#e-tr').value, margem_minima: Number($('#e-m').value),
+        icms_default: Number($('#e-icms').value), pis_default: Number($('#e-pis').value), cofins_default: Number($('#e-cof').value),
+        printer_coupon: $('#e-pc').value, printer_nfe: $('#e-pn').value, paper_width: $('#e-pw').value, receipt_footer: $('#e-rf').value,
+        reorder_mode: $('#e-rm').value, segmento: $('#e-s').value
+      };
       if (newLogo !== undefined) body.logo = newLogo || null;
       await api.put('/api/company', body);
       toast('✓ Empresa atualizada!'); loadCoLogo();
