@@ -205,8 +205,20 @@ input::placeholder { color: #94A3B8; }
 /* ---------- PDV em tela cheia (sem rolagem da página no desktop) ---------- */
 .pdv-top { margin-bottom: 12px; }
 .pdv-top .card { margin: 0; }
+/* Barra compacta do PDV: caixa, operador e ações em uma linha */
+.pdv-topbar { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+.pdv-topbar label { margin: 0; min-width: 130px; }
+.pdv-topbar .sp { flex: 1; }
+.pdv-topbar .btn { flex: none; }
+/* Linhas do carrinho: steppers + total da linha */
+.cart-row { display: flex; gap: 6px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.cart-row input[data-q] { width: 60px; text-align: center; margin: 0; padding: 8px 4px; flex: none; }
+.cart-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cart-row .ln { font-weight: 750; white-space: nowrap; }
+.cart-row .btn { flex: none; padding: 6px 10px; }
+.scan-row label { margin-top: 0; }
 @media (min-width: 901px) {
-    .pdv-fit { height: calc(100dvh - 310px); min-height: 340px; }
+    .pdv-fit { height: calc(100dvh - 215px); min-height: 360px; }
     .pdv-fit > .card { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     .pdv-list-scroll { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; padding-right: 4px; }
     .pdv-cart-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }

@@ -426,26 +426,57 @@ async function viewPDV(C) {
   let abertos = [];
   try { abertos = (await api.get('/api/cash')).filter(c => c.status === 'aberto'); } catch {}
   let caixaSel = localStorage.getItem('caixa') || (abertos[0] && abertos[0].id) || '';
-  let coPDV = {};
-  try { coPDV = await api.get('/api/company'); } catch {}
   C.innerHTML = `
-  <div class="grid g2 pdv-top">
-  <div class="card pdv-brand" style="margin:0">${coPDV.logo ? `<img class="co-logo lg" src="${coPDV.logo}" alt="Logo">` : '<span class="logo">🧾</span>'}<div><h2>PDV ${coPDV.nome ? '· ' + coPDV.nome : ''}</h2><p class="muted">Frente de caixa rápida com baixa automática</p></div></div>
-  <div class="card" style="margin:0"><div class="row">
-    <label title="Caixa/terminal em uso. Ex: caixa 1">Caixa<select id="pdv-cx"><option value="">Sem caixa</option>${abertos.map(c => `<option value="${c.id}" ${String(c.id) === String(caixaSel) ? 'selected' : ''}>Caixa ${c.terminal} · ${c.operator_name || ''}</option>`).join('')}</select></label>
-    <label title="Funcionário operador do caixa">Operador<input id="pdv-op" value="${ME.name}"></label>
-  </div><button class="btn sm ghost" id="pdv-open" title="Abrir novo turno de caixa">🧾 Abrir caixa</button></div>
+  <div class="card pdv-topbar">
+    <label title="Caixa/terminal em uso">Caixa<select id="pdv-cx"><option value="">Sem caixa</option>${abertos.map(c => `<option value="${c.id}" ${String(c.id) === String(caixaSel) ? 'selected' : ''}>${c.terminal} · ${c.operator_name || ''}</option>`).join('')}</select></label>
+    <label title="Funcionário operador">Operador<input id="pdv-op" value="${ME.name}"></label>
+    <button class="btn sm ghost" id="pdv-open" title="Abrir novo turno de caixa">🧾 Abrir</button>
+    <span class="sp"></span>
+    <button class="btn sm ghost" id="pdv-hold" title="Segurar venda atual e liberar o caixa">⏸ Segurar</button>
+    <button class="btn sm ghost" id="pdv-held" title="Ver vendas seguradas">📋 Espera</button>
+    <button class="btn sm danger" id="pdv-clear" title="Limpar carrinho atual">✕</button>
   </div>
-  <div class="grid g2 pdv-fit"><div class="card"><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" class="pdv-list-scroll"></div></div>
-  <div class="card"><h3>🧾 Carrinho</h3><div class="pdv-cart-scroll"><div id="cart"></div><label>Cliente<select id="cart-cli"><option value="">Balcão</option>${clis.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></label>
+  <div class="grid g2 pdv-fit"><div class="card"><div class="row scan-row"><label style="flex:0 0 84px" title="Quantidade (ex: 15) ou use 15*CODIGO no campo ao lado">Qtd<input id="pdv-n" type="number" value="1" min="0" step="any"></label><label style="flex:1" title="Bipe o produto, digite código de barras/SKU/código ou nome + Enter">Bipar / código<input id="pdv-code" placeholder="🔫 Bipe ou código + Enter" autocomplete="off"></label></div><input id="pdv-q" placeholder="🔎 Buscar produto..." title="Digite para filtrar"><div id="pdv-list" class="pdv-list-scroll"></div></div>
+  <div class="card"><h3>🧾 Carrinho <small id="cart-count" class="muted"></small></h3><div class="pdv-cart-scroll"><div id="cart"></div><div class="row" style="align-items:end"><label style="flex:1">Cliente<select id="cart-cli"><option value="">Balcão</option>${clis.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></label><button class="btn sm ghost" id="cli-add" title="Cadastrar cliente rápido">+</button></div>
   <label>Desconto<input id="cart-desc" type="number" value="0" min="0"></label>
   <h3>Pagamento (pode dividir)</h3><div id="pays"></div>
   <p><button class="btn sm ghost" id="pay-add" title="Adicionar outra forma (ex: parte dinheiro + parte crédito)">+ Forma de pagamento</button></p></div>
   <div class="pdv-foot"><h2 id="cart-total">Total: R$ 0,00</h2><p id="pay-rest" class="muted"></p>
   <label><input type="checkbox" id="cart-wait" style="width:auto"> Deixar aguardando pagamento</label>
-  <button class="btn primary" id="cart-fin" title="Finalizar: baixa estoque, financeiro e auditoria">Finalizar venda</button></div></div></div>`;
+  <button class="btn primary" id="cart-fin" title="Finalizar venda">Finalizar venda</button></div></div></div>`;
   let cart = [];
   let pays = [{ method: 'dinheiro', amount: 0 }];
+  function beep(ok = true) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = ok ? 880 : 220; o.type = 'sine';
+      g.gain.value = 0.08; o.start(); o.stop(ctx.currentTime + 0.09);
+    } catch {}
+  }
+  // aceita "15*789..." ou "15x789..." ou código puro; procura por barras/SKU/interno/id/nome
+  function findProduct(raw) {
+    let qtd = Number($('#pdv-n').value) || 1;
+    let code = String(raw || '').trim();
+    const mx = code.match(/^(\d+(?:[.,]\d+)?)\s*[*xX]\s*(.+)$/);
+    if (mx) { qtd = Number(mx[1].replace(',', '.')) * qtd; code = mx[2].trim(); }
+    if (!code) return { qtd, p: null };
+    const low = code.toLowerCase();
+    let p = prods.find(x => [x.codigo_barras, x.sku, x.codigo_interno, String(x.id)].some(v => v && String(v).toLowerCase() === low));
+    if (!p) p = prods.find(x => x.nome.toLowerCase().includes(low));
+    return { qtd, p: p || null };
+  }
+  function addToCart(product_id, qty) {
+    const p = prods.find(x => x.id == product_id);
+    if (!p || !(qty > 0)) return false;
+    const line = cart.find(i => i.product_id == product_id && i.preco_unit === p.preco_venda);
+    if (line) line.qtd = Number((line.qtd + qty).toFixed(3));
+    else cart.push({ product_id: p.id, nome: p.nome, qtd: qty, preco_unit: p.preco_venda });
+    return true;
+  }
+  function holdGet() { try { return JSON.parse(localStorage.getItem('pdv_hold') || '[]'); } catch { return []; } }
+  function holdSet(h) { localStorage.setItem('pdv_hold', JSON.stringify(h)); }
   const PM = [['dinheiro', 'Dinheiro'], ['pix', 'Pix'], ['cartao_credito', 'Crédito'], ['cartao_debito', 'Débito'], ['fiado', 'Fiado']];
   const tot = () => Math.max(0, cart.reduce((s, i) => s + i.qtd * i.preco_unit, 0) - Number($('#cart-desc').value || 0));
   function drawPays() {
@@ -458,24 +489,81 @@ async function viewPDV(C) {
     const t = tot(), sum = pays.reduce((s, p) => s + Number(p.amount || 0), 0);
     $('#cart-total').textContent = 'Total: ' + BRL(t);
     const rest = Number((t - sum).toFixed(2));
-    $('#pay-rest').textContent = rest > 0 ? `Faltam ${BRL(rest)} — clique em Completar` : (rest < 0 ? `Ultrapassou ${BRL(-rest)}` : '✓ Pagamento confere');
+    const ehTroco = pays.length === 1 && pays[0].method === 'dinheiro' && rest < 0 && t > 0;
+    if (rest > 0) $('#pay-rest').textContent = `Faltam ${BRL(rest)} — clique em Completar`;
+    else if (ehTroco) $('#pay-rest').textContent = `Troco: ${BRL(-rest)}`;
+    else if (rest < 0) $('#pay-rest').textContent = `Ultrapassou ${BRL(-rest)}`;
+    else $('#pay-rest').textContent = '✓ Pagamento confere';
     $('#pay-rest').innerHTML += rest > 0 ? ` <button class="btn sm ghost" id="pay-fill">Completar</button>` : '';
     const f = $('#pay-fill'); if (f) f.onclick = () => { pays[pays.length - 1].amount = Number((Number(pays[pays.length - 1].amount || 0) + rest).toFixed(2)); drawPays(); drawRest(); };
   }
   function drawList() {
     const q = ($('#pdv-q').value || '').toLowerCase();
-    $('#pdv-list').innerHTML = prods.filter(p => p.nome.toLowerCase().includes(q)).slice(0, 50).map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--line)"><span><b>${p.nome}</b><br><small class="muted">${BRL(p.preco_venda)} · est ${p.estoque_atual}</small></span><button class="btn sm primary" data-a="${p.id}" title="Adicionar ao carrinho">+</button></div>`).join('');
-    document.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { const p = prods.find(x => x.id == b.dataset.a); cart.push({ product_id: p.id, nome: p.nome, qtd: 1, preco_unit: p.preco_venda }); drawCart(); });
+    $('#pdv-list').innerHTML = prods.filter(p => p.nome.toLowerCase().includes(q)).slice(0, 50).map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--line)"><span><b>${p.nome}</b><br><small class="muted">${BRL(p.preco_venda)} · est ${p.estoque_atual}</small></span><button class="btn sm primary" data-a="${p.id}" title="Adicionar (usa a Qtd do campo)">+</button></div>`).join('');
+    document.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { if (addToCart(b.dataset.a, Number($('#pdv-n').value) || 1)) { beep(true); drawCart(); } else { beep(false); toast('Produto/quantidade inválidos'); } });
   }
   function drawCart() {
-    $('#cart').innerHTML = cart.map((i, idx) => `<div style="display:flex;gap:6px;align-items:center;margin:4px 0"><span style="flex:1">${i.nome} x${i.qtd}</span><button class="btn sm ghost" data-d="${idx}">−</button></div>`).join('') || '<p class="muted">Carrinho vazio.</p>';
+    $('#cart').innerHTML = cart.map((i, idx) => {
+      const p = prods.find(x => x.id == i.product_id);
+      const over = p && p.tipo !== 'servico' && Number(i.qtd) > Number(p.estoque_atual);
+      return `<div class="cart-row"><button class="btn sm ghost" data-m="${idx}" title="Diminuir">−</button><input data-q="${idx}" type="number" min="0" step="any" value="${i.qtd}" title="Quantidade"><button class="btn sm ghost" data-p="${idx}" title="Aumentar">+</button><span class="nm"><b>${i.nome}</b><br><small class="muted">${BRL(i.preco_unit)} un${over ? ' · <b style="color:var(--bad)">acima do estoque!</b>' : ''}</small></span><span class="ln">${BRL(Number(i.qtd) * Number(i.preco_unit))}</span><button class="btn sm danger" data-d="${idx}" title="Remover item">×</button></div>`;
+    }).join('') || '<p class="muted">Carrinho vazio — bipe o primeiro item.</p>';
+    const n = cart.reduce((s, i) => s + Number(i.qtd || 0), 0);
+    $('#cart-count').textContent = cart.length ? `(${cart.length} itens · ${n} un)` : '';
     document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { cart.splice(b.dataset.d, 1); drawCart(); });
+    document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { const i = cart[b.dataset.m]; i.qtd = Number((Number(i.qtd) - 1).toFixed(3)); if (i.qtd <= 0) cart.splice(b.dataset.m, 1); drawCart(); });
+    document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { cart[b.dataset.p].qtd = Number((Number(cart[b.dataset.p].qtd) + 1).toFixed(3)); drawCart(); });
+    document.querySelectorAll('[data-q]').forEach(inp => inp.onchange = () => { const v = Number(inp.value); if (!(v > 0)) cart.splice(inp.dataset.q, 1); else cart[inp.dataset.q].qtd = v; drawCart(); });
     if (pays.length === 1 && !pays[0].amount) pays[0].amount = tot();
     drawPays(); drawRest();
   }
   $('#pdv-q').oninput = drawList; $('#cart-desc').oninput = drawCart;
   $('#pay-add').onclick = () => { pays.push({ method: 'cartao_credito', amount: 0 }); drawPays(); };
   $('#pdv-cx').onchange = e => { caixaSel = e.target.value; localStorage.setItem('caixa', caixaSel); };
+  $('#pdv-code').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const { qtd, p } = findProduct($('#pdv-code').value);
+    if (p && addToCart(p.id, qtd)) { beep(true); drawCart(); }
+    else { beep(false); toast('Produto não encontrado para esse código.'); }
+    $('#pdv-code').value = ''; $('#pdv-code').focus();
+  });
+  $('#cli-add').onclick = () => {
+    modal(`<h3>Novo cliente</h3><label>Nome*<input id="x-n"></label><label>Telefone<input id="x-t"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="x-ok">Salvar</button></div>`);
+    $('#x-ok').onclick = async () => {
+      const nm = $('#x-n').value.trim(), tl = $('#x-t').value;
+      if (!nm) return toast('Nome obrigatório');
+      try {
+        const j = await api.post('/api/customers', { nome: nm, tel: tl });
+        closeModal(); toast('✓ Cliente salvo!');
+        const sel = $('#cart-cli');
+        if (sel) { const op = document.createElement('option'); op.value = j.id; op.textContent = nm; sel.appendChild(op); sel.value = j.id; }
+      } catch (err) { toast(err.message); }
+    };
+  };
+  $('#pdv-clear').onclick = () => confirmDlg('Limpar carrinho atual?', () => { cart = []; pays = [{ method: 'dinheiro', amount: 0 }]; $('#cart-desc').value = 0; drawCart(); $('#pdv-code').focus(); });
+  $('#pdv-hold').onclick = () => {
+    if (!cart.length) return toast('Carrinho vazio.');
+    const h = holdGet();
+    h.push({ ts: new Date().toLocaleString('pt-BR'), cli: $('#cart-cli').value, desc: Number($('#cart-desc').value), cart });
+    holdSet(h); cart = []; pays = [{ method: 'dinheiro', amount: 0 }]; $('#cart-desc').value = 0; drawCart();
+    toast('⏸ Venda segurada.'); $('#pdv-code').focus();
+  };
+  $('#pdv-held').onclick = () => {
+    const h = holdGet();
+    if (!h.length) return toast('Nenhuma venda em espera.');
+    modal(`<h3>📋 Vendas seguradas</h3>${h.map((s, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--line)"><span><b>${s.cart.reduce((a, it) => a + Number(it.qtd), 0)} un</b> · ${s.ts}</span><span class="nowrap"><button class="btn sm primary" data-h="${i}">Recuperar</button> <button class="btn sm danger" data-hd="${i}" title="Descartar">×</button></span></div>`).join('')}<br><button class="btn ghost" onclick="closeModal()">Fechar</button>`);
+    document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => {
+      if (cart.length && !confirm('Substituir o carrinho atual?')) return;
+      const s = holdGet()[b.dataset.h];
+      cart = s.cart; $('#cart-cli').value = s.cli || ''; $('#cart-desc').value = s.desc || 0;
+      pays = [{ method: 'dinheiro', amount: 0 }];
+      const hh = holdGet(); hh.splice(b.dataset.h, 1); holdSet(hh);
+      closeModal(); drawCart(); toast('✓ Venda recuperada.');
+    });
+    document.querySelectorAll('[data-hd]').forEach(b => b.onclick = () => { const hh = holdGet(); hh.splice(b.dataset.hd, 1); holdSet(hh); closeModal(); toast('Removida.'); });
+  };
+  setTimeout(() => { const c = $('#pdv-code'); if (c) c.focus(); }, 150);
   $('#pdv-open').onclick = () => {
     modal(`<h3>🧾 Abrir caixa</h3><div class="row"><label>Caixa/terminal<input id="o-t" value="1" title="Ex: 1 ou 2"></label><label>Funcionário<input id="o-o" value="${ME.name}" title="Ex: Bianca"></label></div><label>Saldo inicial<input id="o-s" type="number" value="0"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="o-ok">Abrir</button></div>`);
     $('#o-ok').onclick = async () => { try { const j = await api.post('/api/cash/open', { terminal: $('#o-t').value, operator_name: $('#o-o').value, saldo_inicial: Number($('#o-s').value) }); closeModal(); localStorage.setItem('caixa', j.id); toast('✓ Caixa aberto!'); route(); } catch (e) { toast(e.message); } };
@@ -483,11 +571,17 @@ async function viewPDV(C) {
   drawList(); drawCart();
   $('#cart-fin').onclick = async () => {
     try {
-      const j = await api.post('/api/sales', { customer_id: $('#cart-cli').value || null, items: cart, desconto: Number($('#cart-desc').value), payments: (tot() === 0 ? [] : pays), caixa_id: caixaSel || null, operator_name: $('#pdv-op').value, awaiting: $('#cart-wait').checked });
+      let troco = 0;
+      let paysToSend = (tot() === 0 ? [] : pays.map(p => ({ method: p.method, amount: Number(p.amount) })));
+      if (paysToSend.length === 1 && paysToSend[0].method === 'dinheiro') {
+        const diff = Number((paysToSend[0].amount - tot()).toFixed(2));
+        if (diff > 0 && tot() > 0) { troco = diff; paysToSend[0].amount = tot(); }
+      }
+      const j = await api.post('/api/sales', { customer_id: $('#cart-cli').value || null, items: cart, desconto: Number($('#cart-desc').value), payments: paysToSend, caixa_id: caixaSel || null, operator_name: $('#pdv-op').value, awaiting: $('#cart-wait').checked });
       const det = await api.get('/api/sales/' + j.id);
       const co = await api.get('/api/company').catch(() => ({}));
       const hasPix = pays.some(p => p.method === 'pix');
-      modal(`<h3>✓ Venda #${j.id} — ${BRL(j.total)}</h3><p class="muted">Status: ${statusLabel(j.status)}</p>
+      modal(`<h3>✓ Venda #${j.id} — ${BRL(j.total)}</h3><p class="muted">Status: ${statusLabel(j.status)}${troco > 0 ? ` · <b>Troco: ${BRL(troco)}</b>` : ''}</p>
       <div class="row"><button class="btn ghost" id="m-cup" title="Imprimir cupom (impressora padrão)">🧾 Cupom</button>${hasPix ? '<button class="btn primary" id="m-qr" title="Exibir QR Code PIX da venda">PIX QR</button>' : ''}<button class="btn ghost" onclick="closeModal()">Fechar</button></div><div id="m-qrbox" style="text-align:center;margin-top:10px"></div>`);
       $('#m-cup').onclick = () => printHtml('Cupom #' + j.id, receiptHtml(det, co));
       const qr = $('#m-qr');
