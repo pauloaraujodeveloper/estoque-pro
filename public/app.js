@@ -50,7 +50,7 @@ function printHtml(title, bodyHtml) {
 }
 function receiptHtml(s, co) {
   co = co || {};
-  return `<div class="c"><h2>${co.nome || 'CUPOM'}</h2><small>${[co.street, co.number, co.city, co.uf].filter(Boolean).join(' ')} ${co.telefone || ''}</small><br><small>${co.doc ? ((co.person_type === 'PF' ? 'CPF: ' : 'CNPJ: ') + co.doc) : ''}</small>${co.printer_coupon ? `<br><small>Imp: ${co.printer_coupon} · ${co.paper_width || ''}</small>` : ''}</div><hr>`
+  return `<div class="c">${co.logo ? `<img src="${co.logo}" style="max-height:64px;max-width:200px"><br>` : ''}<h2>${co.nome || 'CUPOM'}</h2><small>${[co.street, co.number, co.city, co.uf].filter(Boolean).join(' ')} ${co.telefone || ''}</small><br><small>${co.doc ? ((co.person_type === 'PF' ? 'CPF: ' : 'CNPJ: ') + co.doc) : ''}</small>${co.printer_coupon ? `<br><small>Imp: ${co.printer_coupon} · ${co.paper_width || ''}</small>` : ''}</div><hr>`
     + `<small>Venda #${s.id} · ${s.created_at || ''}<br>Cliente: ${s.cliente || 'Balcão'} · Caixa: ${s.caixa_id || '-'} · Op: ${s.operator_name || s.user_name || ''}</small><hr>`
     + `<table>${(s.itens || []).map(i => `<tr><td>${i.qtd}x ${i.nome}</td><td class="r">${BRL(Number(i.qtd) * Number(i.preco_unit))}</td></tr>`).join('')}</table><hr>`
     + (Number(s.desconto) ? `Desconto: ${BRL(s.desconto)}<br>` : '')
@@ -426,7 +426,10 @@ async function viewPDV(C) {
   let abertos = [];
   try { abertos = (await api.get('/api/cash')).filter(c => c.status === 'aberto'); } catch {}
   let caixaSel = localStorage.getItem('caixa') || (abertos[0] && abertos[0].id) || '';
+  let coPDV = {};
+  try { coPDV = await api.get('/api/company'); } catch {}
   C.innerHTML = `
+  <div class="card pdv-brand">${coPDV.logo ? `<img class="co-logo lg" src="${coPDV.logo}" alt="Logo">` : '<span class="logo">🧾</span>'}<div><h2>PDV ${coPDV.nome ? '· ' + coPDV.nome : ''}</h2><p class="muted">Frente de caixa rápida com baixa automática</p></div></div>
   <div class="card" style="margin-bottom:12px"><div class="row">
     <label title="Caixa/terminal em uso. Ex: caixa 1">Caixa<select id="pdv-cx"><option value="">Sem caixa</option>${abertos.map(c => `<option value="${c.id}" ${String(c.id) === String(caixaSel) ? 'selected' : ''}>Caixa ${c.terminal} · ${c.operator_name || ''}</option>`).join('')}</select></label>
     <label title="Funcionário operador do caixa">Operador<input id="pdv-op" value="${ME.name}"></label>
