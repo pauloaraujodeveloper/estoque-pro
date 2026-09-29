@@ -60,8 +60,8 @@ function enrich(p) {
   if (!p) return p;
   return { ...p, margem: margemPct(p.preco_venda, p.custo_medio), markup: markupPct(p.preco_venda, p.custo_medio), lucro: lucroUnit(p.preco_venda, p.custo_medio) };
 }
-function T(req) { // banco/schema da empresa logada
-  if (!req.tdb) throw new Error('Empresa não identificada');
+function T(req) { // banco/schema da empresa logada (ou contexto do superadmin)
+  if (!req.tdb) throw new Error('Sem empresa no contexto: selecione uma empresa no Painel SaaS');
   return req.tdb;
 }
 async function movimentar(tdb, { product_id, tipo, motivo, qtd, custo_unit = 0, user, doc_ref = null }) {
@@ -166,7 +166,7 @@ app.delete('/api/saas/companies/:id', authRequired, requireSuperadmin, ah(async 
 
 // ============ EMPRESA (dados da própria empresa logada) ============
 app.get('/api/company', authRequired, ah(async (req, res) => {
-  if (req.user.role === 'superadmin') return res.json({ nome: 'Painel SaaS', superadmin: true });
+  if (req.user.role === 'superadmin' && !req.tdb) return res.json({ nome: 'Painel SaaS', superadmin: true });
   const c = await mget('SELECT * FROM companies WHERE id=?', req.user.company_id);
   const info = await tget(T(req), 'SELECT * FROM company_info WHERE id=1');
   res.json({ ...c, info });

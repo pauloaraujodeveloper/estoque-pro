@@ -3,9 +3,10 @@ const $ = s => document.querySelector(s);
 const api = {
   token: localStorage.getItem('token') || null,
   async req(m, url, body) {
+    const acting = (typeof ME !== 'undefined' && ME && ME.role === 'superadmin' && sessionStorage.getItem('cid')) ? { 'x-company-id': sessionStorage.getItem('cid') } : {};
     let r;
     try {
-      r = await fetch(url, { method: m, headers: { 'Content-Type': 'application/json', ...(this.token ? { Authorization: 'Bearer ' + this.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      r = await fetch(url, { method: m, headers: { 'Content-Type': 'application/json', ...(this.token ? { Authorization: 'Bearer ' + this.token } : {}), ...acting }, body: body ? JSON.stringify(body) : undefined });
     } catch {
       throw new Error('Servidor indisponível (Failed to fetch). Inicie o servidor com start-servidor.bat ou "npm start" e recarregue a página.');
     }
@@ -71,6 +72,16 @@ function enter() {
   route();
   refreshBell();
   loadCoLogo();
+  renderCtxBar();
+}
+function actingCid() { return (ME && ME.role === 'superadmin' && sessionStorage.getItem('cid')) || null; }
+function renderCtxBar() {
+  const bar = $('#ctx-bar');
+  const cid = actingCid();
+  if (!cid) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  bar.innerHTML = `<span>👁️ Vendo dados da empresa #${cid} (modo suporte)</span><button class="btn sm warn" id="ctx-exit" title="Voltar ao Painel SaaS">Sair</button>`;
+  $('#ctx-exit').onclick = () => { sessionStorage.removeItem('cid'); location.hash = '#/saas'; route(); renderCtxBar(); buildMenu(); };
 }
 function setCoLogo(logo) {
   const img = $('#co-logo'), fb = $('#co-logo-fb');
@@ -119,7 +130,7 @@ const MENUS = {
   estoquista: [['Estoque', [['Dashboard', '#/dashboard', ''], ['Produtos', '#/produtos', ''], ['Movimentações', '#/estoque', 'Entradas e saídas'], ['Lotes', '#/lotes', ''], ['Compras', '#/compras', 'Receber']]]],
 };
 function buildMenu() {
-  const m = MENUS[ME.role] || MENUS.admin;
+  const m = ME.role === 'superadmin' ? (actingCid() ? MENUS.admin : MENUS.superadmin) : (MENUS[ME.role] || MENUS.admin);
   $('#menu').innerHTML = m.map(([g, its]) => `<div class="grp">${g}</div>` + its.map(([n, h, t]) => `<a href="${h}" data-r="${h}" title="${t || n}">${n}</a>`).join('')).join('');
 }
 window.addEventListener('hashchange', route);
@@ -155,7 +166,7 @@ function setTitle(t, sub) { $('#page-title').textContent = t; $('#crumbs').textC
 // ---------- DASHBOARD ----------
 async function viewDash(C) {
   setTitle('Dashboard', 'Visão geral da sua empresa (dados isolados)');
-  if (ME.role === 'superadmin') { location.hash = '#/saas'; return; }
+  if (ME.role === 'superadmin' && !actingCid()) { location.hash = '#/saas'; return; }
   const d = await api.get('/api/dashboard');
   const max = Math.max(1, ...d.ticket.map(t => t.t));
   C.innerHTML = `
@@ -463,9 +474,10 @@ async function viewSaaS(C) {
   const comps = await api.get('/api/saas/companies');
   C.innerHTML = `<div class="grid g4">${comps.map(c => `<div class="card co-card">${c.logo ? `<img class="logo-prev sm" src="${c.logo}" alt="">` : '<span class="logo">🏢</span>'}<div><h3>${c.nome}</h3><small class="muted">#${c.id} · ${c.segmento} · ${c.plano} · ${c.usuarios} usuários · ${c.ativa ? 'ativa' : 'inativa'}</small></div></div>`).join('')}</div>
   <div class="toolbar"><button class="btn sm primary" id="s-new" title="Vender para nova empresa: cria banco isolado">+ Nova empresa cliente</button></div>
-  <div class="table-wrap card-pad0"><table><thead><tr><th></th><th>ID</th><th>Empresa</th><th>Segmento</th><th>Usuários</th><th>Status</th><th></th></tr></thead><tbody>${comps.map(c => `<tr><td>${c.logo ? `<img class="logo-prev xs" src="${c.logo}" alt="">` : '🏢'}</td><td>${c.id}</td><td>${c.nome}</td><td>${c.segmento}</td><td>${c.usuarios}</td><td>${c.ativa ? 'ativa' : 'inativa'}</td><td class="nowrap"><button class="btn sm ghost" data-ed="${c.id}" title="Editar dados e logo da empresa">✏️</button> <button class="btn sm warn" data-t="${c.id}" title="Ativar/desativar acesso da empresa">On/Off</button></td></tr>`).join('')}</tbody></table></div>
+  <div class="table-wrap card-pad0"><table><thead><tr><th></th><th>ID</th><th>Empresa</th><th>Segmento</th><th>Usuários</th><th>Status</th><th></th></tr></thead><tbody>${comps.map(c => `<tr><td>${c.logo ? `<img class="logo-prev xs" src="${c.logo}" alt="">` : '🏢'}</td><td>${c.id}</td><td>${c.nome}</td><td>${c.segmento}</td><td>${c.usuarios}</td><td>${c.ativa ? 'ativa' : 'inativa'}</td><td class="nowrap"><button class="btn sm ghost" data-see="${c.id}" title="Abrir dashboard e dados desta empresa (modo suporte)">📂</button> <button class="btn sm ghost" data-ed="${c.id}" title="Editar dados e logo da empresa">✏️</button> <button class="btn sm warn" data-t="${c.id}" title="Ativar/desativar acesso da empresa">On/Off</button></td></tr>`).join('')}</tbody></table></div>
   <p class="muted">Cada empresa tem seu arquivo <b>data/tenant_ID.sqlite</b> — excluir a empresa apaga só o banco dela. Backup por empresa = copiar o arquivo.</p>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = async () => { const c = comps.find(x => x.id == b.dataset.t); await api.req('PUT', '/api/saas/companies/' + c.id, { ativa: !c.ativa }); route(); });
+  document.querySelectorAll('[data-see]').forEach(b => b.onclick = () => { sessionStorage.setItem('cid', b.dataset.see); buildMenu(); renderCtxBar(); location.hash = '#/dashboard'; route(); });
   document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => editCompany(comps.find(x => x.id == b.dataset.ed)));
   $('#s-new').onclick = () => { modal(`<h3>Nova empresa cliente</h3><label>Empresa<input id="x-n"></label><label>Segmento<select id="x-s"><option>mercado</option><option>marmitaria</option><option>salao</option><option>peixaria</option></select></label><label>Admin nome<input id="x-a"></label><label>Admin e-mail<input id="x-e"></label><label>Senha<input id="x-p" type="password"></label><div class="row"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn ok" id="x-ok">Criar</button></div>`); $('#x-ok').onclick = async () => { try { await api.post('/api/saas/companies', { nome: $('#x-n').value, segmento: $('#x-s').value, admin_name: $('#x-a').value, admin_email: $('#x-e').value, admin_pass: $('#x-p').value }); closeModal(); toast('Empresa criada!'); route(); } catch (e) { toast(e.message); } }; };
 }

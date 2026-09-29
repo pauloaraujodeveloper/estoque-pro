@@ -31,7 +31,11 @@ img { max-width: 100%; }
 .hidden { display: none !important; }
 .muted { color: var(--mut); font-size: 13px; }
 .err { color: var(--bad); }
-.nowrap { white-space: nowrap; }
+#ctx-bar {
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    background: #fef3c7; border-bottom: 1px solid #fcd34d; color: #92400e;
+    padding: 8px 18px; font-size: 13px; font-weight: 600;
+}
 .break { overflow-wrap: anywhere; }
 
 /* ---------- LOGIN ---------- */

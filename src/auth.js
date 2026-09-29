@@ -29,6 +29,19 @@ async function authRequired(req, res, next) {
     if (u.company_id) {
       try { req.tdb = await getTenantDb(u.company_id); }
       catch { return res.status(401).json({ error: 'Empresa não identificada.' }); }
+    } else if (u.role === 'superadmin') {
+      // superadmin pode atuar no contexto de uma empresa (suporte): ?company_id= ou header x-company-id
+      const cid = req.query.company_id || req.headers['x-company-id'];
+      if (cid) {
+        const c = await mget('SELECT * FROM companies WHERE id=?', cid);
+        if (!c) return res.status(403).json({ error: 'Empresa inexistente.' });
+        try { req.tdb = await getTenantDb(c.id); }
+        catch { return res.status(401).json({ error: 'Empresa não identificada.' }); }
+        req.user.company_id = c.id;
+        req.user.company_nome = c.nome;
+        req.user.company_segmento = c.segmento;
+        req.user.actingAs = true;
+      }
     }
     next();
   } catch (e) {
