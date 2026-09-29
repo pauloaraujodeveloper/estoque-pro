@@ -9,7 +9,7 @@ const path = require('path');
 const { initMaster, mq, mget, mrun, getTenantDb, tq, tget, trun, deleteTenant, TODAY, USE_PG, pool } = require('./src/db');
 const { hashPass, checkPass, sign, authRequired, requireRole, requireSuperadmin, filterProductByRole } = require('./src/auth');
 const { margemPct, markupPct, lucroUnit, precoPorMargem, custoMedioPonderado, auditTdb, diasPara, cleanStr } = require('./src/utils');
-const { sendMail, welcomeHtml, tempPassHtml, mailConfigured } = require('./src/mailer');
+const { sendMail, sendMailSafe, welcomeHtml, tempPassHtml, mailConfigured } = require('./src/mailer');
 const crypto = require('crypto');
 const { buildBRCode } = require('./src/pix');
 const QRCode = require('qrcode');
@@ -128,7 +128,7 @@ app.post('/api/auth/signup-company', ah(async (req, res) => {
   await seedDefaults(tdb);
   const u = await mrun('INSERT INTO users(company_id,name,email,pass_hash,role) VALUES(?,?,?,?,?)', company_id, user_name, String(email).toLowerCase(), await hashPass(password), 'admin');
   const user = { id: Number(u.lastInsertRowid), company_id, role: 'admin', name: user_name, email: String(email).toLowerCase() };
-  try { await sendMail({ to: user.email, subject: 'Bem-vindo ao EstoquePro', html: welcomeHtml(company_nome, user_name) }); } catch {}
+  try { await sendMailSafe({ to: user.email, subject: 'Bem-vindo ao EstoquePro', html: welcomeHtml(company_nome, user_name) }); } catch {}
   res.status(201).json({ token: sign(user), user, company_id });
 }));
 
@@ -160,14 +160,15 @@ app.post('/api/auth/recover', limit(10, 60 * 60 * 1000), ah(async (req, res) => 
   if (u.company_id) {
     try { auditTdb(await getTenantDb(u.company_id), { id: u.id, name: u.name }, 'recuperar senha', 'auth', u.email, null, null, req.ip); } catch {}
   }
-  try { await sendMail({ to: u.email, subject: 'Sua senha temporária - EstoquePro', html: tempPassHtml(u.name, tmp) }); }
-  catch { return res.status(500).json({ error: 'Não foi possível enviar o e-mail. Fale com o administrador.' }); }
+  const sent = await sendMailSafe({ to: u.email, subject: 'Sua senha temporária - EstoquePro', html: tempPassHtml(u.name, tmp) });
+  if (!sent.ok && !sent.skipped) return res.status(500).json({ error: 'Não foi possível enviar o e-mail. Fale com o administrador.' });
   res.json(done);
 }));
 // Teste de e-mail (admin/superadmin): verifica RESEND_API_KEY + remetente
 app.post('/api/notify/test', authRequired, requireRole('admin'), ah(async (req, res) => {
   const to = (req.body && req.body.to) || req.user.email;
-  const r = await sendMail({ to, subject: 'EstoquePro: e-mail de teste', html: '<p>✅ Envio via Resend funcionando!</p>' });
+  const r = await sendMailSafe({ to, subject: 'EstoquePro: e-mail de teste', html: '<p>✅ Envio via Resend funcionando!</p>' });
+  if (!r.ok && !r.skipped) return res.status(500).json({ error: 'Falha no envio: ' + r.error });
   res.json({ ok: true, ...r, to, from: process.env.MAIL_FROM || 'onboarding@resend.dev', configured: mailConfigured() });
 }));
 
@@ -930,9 +931,9 @@ app.get('/api/reports/comissoes', authRequired, requireRole('admin', 'gerente'),
 app.get('/api/finance/cashflow', authRequired, ah(async (req, res) => {
   const tdb = T(req);
   const days = Math.min(90, Math.max(7, Number(req.query.days || 30)));
-  const rec = await tq(tdb, `SELECT COALESCE(SUM(CASE WHEN status='recebido' THEN valor ELSE 0 END),0) rin, COALESCE(SUM(CASE WHEN status='aberto' THEN valor ELSE 0 END),0) pin, substr(COALESCE(pago_em, vencimento, created_at),1,10) d FROM accounts_receivable GROUP BY d`);
-  const pag = await tq(tdb, `SELECT COALESCE(SUM(CASE WHEN status='pago' THEN valor ELSE 0 END),0) pout, COALESCE(SUM(CASE WHEN status='aberto' THEN valor ELSE 0 END),0) pout_prev, substr(COALESCE(pago_em, vencimento, created_at),1,10) d FROM accounts_payable GROUP BY d`);
-  const ven = await tq(tdb, `SELECT substr(created_at,1,10) d, COALESCE(SUM(total),0) v FROM sales WHERE status='finalizada' GROUP BY d`);
+  const rec = await tq(tdb, `SELECT COALESCE(SUM(CASE WHEN status='recebido' THEN valor ELSE 0 END),0) rin, COALESCE(SUM(CASE WHEN status='aberto' THEN valor ELSE 0 END),0) pin, date(COALESCE(pago_em, vencimento, created_at)) d FROM accounts_receivable GROUP BY d`);
+  const pag = await tq(tdb, `SELECT COALESCE(SUM(CASE WHEN status='pago' THEN valor ELSE 0 END),0) pout, COALESCE(SUM(CASE WHEN status='aberto' THEN valor ELSE 0 END),0) pout_prev, date(COALESCE(pago_em, vencimento, created_at)) d FROM accounts_payable GROUP BY d`);
+  const ven = await tq(tdb, `SELECT date(created_at) d, COALESCE(SUM(total),0) v FROM sales WHERE status='finalizada' GROUP BY d`);
   const map = {};
   const put = (d, k, v) => { if (!d) return; map[d] = map[d] || {}; map[d][k] = Number(v); };
   rec.forEach(r => { put(r.d, 'rin', r.rin); put(r.d, 'pin', r.pin); });

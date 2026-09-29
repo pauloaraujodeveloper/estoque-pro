@@ -24,10 +24,16 @@ async function sendMail({ to, subject, html }) {
     throw new Error('Não foi possível enviar o e-mail.');
   }
 }
+// envio com teto de tempo (provedor lento nunca trava signup/recover)
+async function sendMailSafe(opts, ms = 10000) {
+  try {
+    return { ok: true, ...(await Promise.race([sendMail(opts), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout e-mail')), ms))])) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
 function welcomeHtml(company, name) {
   return `<h2>Bem-vindo ao EstoquePro, ${name}!</h2><p>A empresa <strong>${company}</strong> foi criada com banco de dados isolado.</p><p>Acesse com seu e-mail e senha cadastrados.</p><p><small>Controle simples para uma gestão mais inteligente.</small></p>`;
 }
 function tempPassHtml(name, tmp) {
   return `<h2>Olá, ${name}</h2><p>Sua senha temporária é: <strong>${tmp}</strong></p><p>Entre e peça ao administrador para trocar, ou use Usuários → 🔑.</p>`;
 }
-module.exports = { sendMail, welcomeHtml, tempPassHtml, mailConfigured: () => !!process.env.RESEND_API_KEY };
+module.exports = { sendMail, sendMailSafe, welcomeHtml, tempPassHtml, mailConfigured: () => !!process.env.RESEND_API_KEY };

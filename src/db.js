@@ -18,7 +18,7 @@ if (USE_PG) {
     url = url.replace(/-pooler\./, '.');
     console.log('Neon pooler detectado: usando endpoint direto para conexões estáveis.');
   }
-  pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 5 });
+  pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 5, connectionTimeoutMillis: 20000, query_timeout: 25000 });
 }
 // Executa SEMPRE com search_path + timezone explícitos (nunca confia em estado anterior da conexão)
 async function pgExec(searchPath, text, params) {
