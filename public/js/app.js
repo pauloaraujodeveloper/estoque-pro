@@ -1600,6 +1600,15 @@ function initEventListeners() {
       else openCommandPalette();
     }
 
+    // Ctrl+B for sidebar toggle
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      e.preventDefault();
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+      localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed);
+      $('#sidebar').classList.toggle('collapsed', state.sidebarCollapsed);
+      updateSidebarToggle();
+    }
+
     // PDV shortcuts
     if (state.currentRoute === '#/pdv') {
       if (e.key === 'F2') { e.preventDefault(); $('#pdv-code')?.focus(); }
