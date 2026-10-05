@@ -1,90 +1,141 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
-  <meta name="description" content="EstoquePro — controle de estoque multissegmento para desktop, notebook, tablet e celular">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>EstoquePro — Gestão Multissegmento</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta name="theme-color" content="#4F46E5">
+  <meta name="description" content="EstoquePro — Sistema de Controle de Estoque e PDV">
+  <title>EstoquePro — Gestão Inteligente</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/app.css">
 </head>
-
 <body>
-  <div id="auth-view" class="auth-wrap hidden">
+  <!-- Auth View -->
+  <div id="auth-view" class="auth-view hidden">
     <div class="auth-card">
-      <div class="brand"><span class="logo">📦</span>
-        <div><strong>EstoquePro</strong><small>Controle simples, gestão inteligente</small></div>
+      <div class="auth-brand">
+        <div class="auth-logo">E</div>
+        <div>
+          <div class="auth-title">EstoquePro</div>
+          <div class="auth-subtitle">Gestão inteligente para seu negócio</div>
+        </div>
       </div>
-      <div class="tabs"><button id="tab-login" class="tab active"
-          title="Entrar com e-mail e senha da sua empresa">Entrar</button><button id="tab-signup" class="tab"
-          title="Criar uma nova empresa independente no sistema">Cadastrar empresa</button></div>
-      <form id="form-login">
-        <label>E-mail<input id="login-email" type="email" required placeholder="voce@suaempresa.com"
-            title="E-mail do seu usuário dentro da sua empresa"></label>
-        <label>Senha<input id="login-pass" type="password" required placeholder="••••••"
-            title="Sua senha de acesso"></label>
-        <button class="btn primary" type="submit" title="Acessar o painel da sua empresa">Entrar</button>
-      <p><a href="#" id="link-recover" title="Receber senha temporária por e-mail">Esqueci a senha</a></p>
-        <p class="muted">Demo: admin@marmita.com / 123456 · admin@salao.com / 123456 · SaaS: saas@dono.com / saas123</p>
-        <p id="login-err" class="err"></p>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Entrar</button>
+        <button class="auth-tab" data-tab="signup">Cadastrar empresa</button>
+      </div>
+      <form id="form-login" class="auth-form">
+        <div>
+          <label for="login-email">E-mail</label>
+          <input type="email" id="login-email" class="input" placeholder="voce@empresa.com" required>
+        </div>
+        <div>
+          <label for="login-pass">Senha</label>
+          <input type="password" id="login-pass" class="input" placeholder="••••••" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Entrar</button>
+        <div class="auth-footer">
+          <a href="#" id="link-recover">Esqueci a senha</a>
+        </div>
+        <div id="login-err" class="auth-error hidden"></div>
+        <div class="auth-demo">
+          Demo: admin@marmita.com / 123456 · admin@salao.com / 123456
+        </div>
       </form>
-      <form id="form-signup" class="hidden">
-        <label>Nome da empresa<input id="su-company" required placeholder="Ex: Mercado do Zé"
-            title="Nome fantasia da sua empresa. Tudo ficará isolado das outras empresas."></label>
-        <label>Segmento<select id="su-seg" title="Ativa módulos específicos do seu ramo">
+      <form id="form-signup" class="auth-form hidden">
+        <div>
+          <label for="su-company">Nome da empresa</label>
+          <input type="text" id="su-company" class="input" placeholder="Ex: Mercado do Zé" required>
+        </div>
+        <div>
+          <label for="su-seg">Segmento</label>
+          <select id="su-seg" class="select">
             <option value="mercado">Mercado / Loja</option>
             <option value="marmitaria">Marmitaria / Restaurante</option>
             <option value="salao">Salão de beleza</option>
             <option value="peixaria">Peixaria</option>
-          </select></label>
-        <label>Seu nome<input id="su-name" required placeholder="Seu nome"
-            title="Responsável / administrador da empresa"></label>
-        <label>Seu e-mail<input id="su-email" type="email" required placeholder="voce@suaempresa.com"
-            title="Será seu login. Cada empresa tem usuários separados."></label>
-        <label>Senha<input id="su-pass" type="password" required minlength="4" placeholder="Mín. 4 caracteres"></label>
-        <button class="btn primary" type="submit" title="Criar empresa com banco de dados isolado">Criar minha
-          empresa</button>
-        <p id="signup-err" class="err"></p>
+          </select>
+        </div>
+        <div>
+          <label for="su-name">Seu nome</label>
+          <input type="text" id="su-name" class="input" placeholder="Seu nome" required>
+        </div>
+        <div>
+          <label for="su-email">E-mail</label>
+          <input type="email" id="su-email" class="input" placeholder="voce@empresa.com" required>
+        </div>
+        <div>
+          <label for="su-pass">Senha</label>
+          <input type="password" id="su-pass" class="input" placeholder="Mín. 4 caracteres" required minlength="4">
+        </div>
+        <button type="submit" class="btn btn-primary">Criar minha empresa</button>
+        <div id="signup-err" class="auth-error hidden"></div>
       </form>
     </div>
   </div>
 
-  <div id="app" class="hidden">
-    <aside id="sidebar">
-      <div class="brand small"><img id="co-logo" class="co-logo hidden" alt="Logo da empresa"><span class="logo" id="co-logo-fb">📦</span>
-        <div><strong id="co-name">—</strong><small id="co-seg">—</small></div>
+  <!-- App View -->
+  <div id="app-view" class="app-layout hidden">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">E</div>
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-name" id="co-name">EstoquePro</div>
+          <div class="sidebar-brand-sub" id="co-seg">—</div>
+        </div>
+        <button class="sidebar-toggle" id="btn-collapse" title="Recolher menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
       </div>
-      <nav id="menu"></nav>
-      <div class="side-foot"><small id="user-line"></small><button id="btn-logout" class="btn ghost"
-          title="Encerrar sessão">Sair</button></div>
+      <nav id="sidebar-nav" class="sidebar-nav"></nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="avatar" id="user-avatar">U</div>
+          <div class="sidebar-user-info">
+            <div class="sidebar-user-name" id="user-name">—</div>
+            <div class="sidebar-user-role" id="user-role">—</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-logout" title="Sair">Sair</button>
+      </div>
     </aside>
-    <div class="main">
-      <header id="topbar">
-        <button id="btn-menu" title="Abrir/fechar menu">☰</button>
-        <div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <header class="topbar">
+        <button class="topbar-btn" id="btn-menu" title="Abrir menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+        <div class="topbar-title">
           <h1 id="page-title">Dashboard</h1>
-          <p id="crumbs" class="muted"></p>
+          <p id="page-subtitle"></p>
         </div>
-        <div class="top-actions">
-        <span id="net-status" class="pill" title="Status da conexão">🟢 Online</span>
-          <button id="bell" class="icon-btn" title="Ver alertas: estoque baixo, vencimentos, margem">🔔<span id="bell-n"
-              class="badge hidden">0</span></button>
-          <span id="role-badge" class="pill"></span>
+        <div class="topbar-actions">
+          <div class="search-global">
+            <svg class="search-global-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="global-search" class="search-global-input" placeholder="Buscar...">
+            <span class="search-global-shortcut"><span class="kbd">Ctrl</span><span class="kbd">K</span></span>
+          </div>
+          <button class="topbar-btn" id="btn-notifications" title="Notificações">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="notif-badge" class="badge hidden">0</span>
+          </button>
         </div>
-    </header>
-    <div id="ctx-bar" class="hidden"></div>
-    <main id="content"></main>
+      </header>
+      <main id="content" class="content-area"></main>
     </div>
   </div>
 
-  <div id="overlay" class="hidden"></div>
-  <div id="toasts"></div>
+  <!-- Overlays -->
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
   <div id="modal-root"></div>
-  <script src="app.js"></script>
-</body>
+  <div id="toast-root" class="toast-container"></div>
+  <div id="command-palette-root"></div>
 
+  <script src="js/app.js"></script>
+</body>
 </html>
