@@ -1536,6 +1536,14 @@ function initEventListeners() {
     updateSidebarToggle();
   };
 
+  // Sidebar expand button (visible when collapsed)
+  $('#btn-expand').onclick = () => {
+    state.sidebarCollapsed = false;
+    localStorage.setItem('sidebarCollapsed', 'false');
+    $('#sidebar').classList.remove('collapsed');
+    updateSidebarToggle();
+  };
+
   function updateSidebarToggle() {
     const btn = $('#btn-collapse');
     if (state.sidebarCollapsed) {
