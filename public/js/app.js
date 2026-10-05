@@ -1533,7 +1533,19 @@ function initEventListeners() {
     state.sidebarCollapsed = !state.sidebarCollapsed;
     localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed);
     $('#sidebar').classList.toggle('collapsed', state.sidebarCollapsed);
+    updateSidebarToggle();
   };
+
+  function updateSidebarToggle() {
+    const btn = $('#btn-collapse');
+    if (state.sidebarCollapsed) {
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+      btn.title = 'Expandir menu';
+    } else {
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>';
+      btn.title = 'Recolher menu';
+    }
+  }
 
   // Mobile menu
   $('#btn-menu').onclick = () => {
@@ -1587,6 +1599,31 @@ function initEventListeners() {
       if (e.key === 'Escape') { closeModal(); }
     }
   });
+
+  // Theme toggle
+  const themeToggle = document.createElement('button');
+  themeToggle.className = 'topbar-btn';
+  themeToggle.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  themeToggle.title = 'Alternar tema';
+  themeToggle.onclick = () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+    themeToggle.innerHTML = isDark
+      ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+      : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  };
+  $('.topbar-actions').appendChild(themeToggle);
+
+  // Apply saved theme
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  if (savedTheme === 'dark') {
+    themeToggle.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  }
+
+  // Initialize sidebar toggle icon
+  updateSidebarToggle();
 
   // Hash change
   window.addEventListener('hashchange', navigate);
